@@ -43,23 +43,47 @@ if 'MQTT' in config and 'enabled' in config['MQTT'] and config['MQTT']['enabled'
 else:
     MQTT_enabled = 0
 
+# check if fetch_production_historic_interval is enabled in config and not under minimum value
+if 'ENVOY' in config and 'fetch_production_historic_interval' in config['ENVOY'] and int(config['ENVOY']['fetch_production_historic_interval']) > 900:
+    fetch_production_historic_interval = int(config['ENVOY']['fetch_production_historic_interval'])
+else:
+    fetch_production_historic_interval = 900
+
 # check if fetch_devices is enabled in config
 if 'DATA' in config and 'fetch_devices' in config['DATA'] and config['DATA']['fetch_devices'] == '1':
     fetch_devices_enabled = 1
+    # check if fetch_devices_interval is enabled in config and not under minimum value
+    if 'DATA' in config and 'fetch_devices_interval' in config['DATA'] and int(config['DATA']['fetch_devices_interval']) > 60:
+        fetch_devices_interval = int(config['DATA']['fetch_devices_interval'])
+    else:
+        fetch_devices_interval = 60
 else:
     fetch_devices_enabled = 0
+    fetch_devices_interval = 3600
 
 # check if fetch_inverters is enabled in config
 if 'DATA' in config and 'fetch_inverters' in config['DATA'] and config['DATA']['fetch_inverters'] == '1':
     fetch_inverters_enabled = 1
+    # check if fetch_inverters_interval is enabled in config and not under minimum value
+    if 'DATA' in config and 'fetch_inverters_interval' in config['DATA'] and int(config['DATA']['fetch_inverters_interval']) > 5:
+        fetch_inverters_interval = int(config['DATA']['fetch_inverters_interval'])
+    else:
+        fetch_inverters_interval = 5
 else:
     fetch_inverters_enabled = 0
+    fetch_inverters_interval = 60
 
 # check if fetch_events is enabled in config
 if 'DATA' in config and 'fetch_events' in config['DATA'] and config['DATA']['fetch_events'] == '1':
     fetch_events_enabled = 1
+    # check if fetch_events_interval is enabled in config and not under minimum value
+    if 'DATA' in config and 'fetch_events_interval' in config['DATA'] and int(config['DATA']['fetch_events_interval']) > 900:
+        fetch_events_interval = int(config['DATA']['fetch_events_interval'])
+    else:
+        fetch_events_interval = 900
 else:
     fetch_events_enabled = 0
+    fetch_events_interval = 3600
 
 
 # set variables
@@ -91,7 +115,7 @@ pv_L3_voltage = 0
 pv_L3_forward = 0
 
 data_meter_stream = {}
-data_production_json = {}
+data_production_historic = {}
 data_device_statuses = {}
 data_inverters = {}
 data_events = {}
@@ -130,7 +154,7 @@ def on_publish(client, userdata, rc):
 def fetch_meter_stream():
     logging.debug("step: fetch_meter_stream")
 
-    global config, data_meter_stream, data_production_json, keep_running, pv_power, pv_current, pv_voltage, pv_L1_power, pv_L1_current, pv_L1_voltage, pv_L2_power, pv_L2_current, pv_L2_voltage, pv_L3_power, pv_L3_current, pv_L3_voltage, replace_phases
+    global config, data_meter_stream, data_production_historic, keep_running, pv_power, pv_current, pv_voltage, pv_L1_power, pv_L1_current, pv_L1_voltage, pv_L2_power, pv_L2_current, pv_L2_voltage, pv_L3_power, pv_L3_current, pv_L3_voltage, replace_phases
 
     marker = b'data: '
 
@@ -189,10 +213,10 @@ def fetch_meter_stream():
                                     'power_appearent': float(data[meter][phase]['s']),
                                     'power_factor': float(data[meter][phase]['pf']),
                                     'frequency': float(data[meter][phase]['f']),
-                                    'whToday': data_production_json[meter_name][phase_name]['whToday'],
-                                    'vahToday': data_production_json[meter_name][phase_name]['vahToday'],
-                                    'whLifetime': data_production_json[meter_name][phase_name]['whLifetime'],
-                                    'vahLifetime': data_production_json[meter_name][phase_name]['vahLifetime'],
+                                    'whToday': data_production_historic[meter_name][phase_name]['whToday'],
+                                    'vahToday': data_production_historic[meter_name][phase_name]['vahToday'],
+                                    'whLifetime': data_production_historic[meter_name][phase_name]['whLifetime'],
+                                    'vahLifetime': data_production_historic[meter_name][phase_name]['vahLifetime'],
                                 }
                             })
 
@@ -208,10 +232,10 @@ def fetch_meter_stream():
                         'voltage': total_voltage,
                         'power_react': total_power_react,
                         'power_appearent': total_power_appearent,
-                        'whToday': data_production_json[meter_name]['whToday'],
-                        'vahToday': data_production_json[meter_name]['vahToday'],
-                        'whLifetime': data_production_json[meter_name]['whLifetime'],
-                        'vahLifetime': data_production_json[meter_name]['vahLifetime'],
+                        'whToday': data_production_historic[meter_name]['whToday'],
+                        'vahToday': data_production_historic[meter_name]['vahToday'],
+                        'whLifetime': data_production_historic[meter_name]['whLifetime'],
+                        'vahLifetime': data_production_historic[meter_name]['vahLifetime'],
                     })
 
                     if meter == 'production':
@@ -225,10 +249,10 @@ def fetch_meter_stream():
                 data_meter_stream = total_jsonpayload
 
 
-def fetch_production_json():
-    logging.debug("step: fetch_production_json")
+def fetch_production_historic():
+    logging.debug("step: fetch_production_historic")
 
-    global replace_meters, data_production_json
+    global replace_meters, data_production_historic
 
     url = 'http://%s/production.json?details=1' % config['ENVOY']['address']
     data = requests.get(url, timeout=5).json()
@@ -277,7 +301,7 @@ def fetch_production_json():
                 total_jsonpayload.update({meter_name: jsonpayload})
 
     # make fetched data globally available
-    data_production_json = total_jsonpayload
+    data_production_historic = total_jsonpayload
 
 
 def fetch_device_statuses():
@@ -366,7 +390,12 @@ def fetch_events():
 def fetch_handler():
     logging.debug("step: fetch_handler")
 
-    global config, keep_running
+    global config, keep_running, fetch_production_historic_interval, fetch_devices_interval, fetch_inverters_interval, fetch_events_interval
+
+    fetch_production_historic_last = 0
+    fetch_devices_last = 0
+    fetch_inverters_last = 0
+    fetch_events_last = 0
 
     while 1:
 
@@ -374,26 +403,35 @@ def fetch_handler():
             logging.info('--> fetch_handler(): got exit signal')
             sys.exit()
 
+        time_now = int(time.time())
+
         try:
-            fetch_production_json()
+            if ((time_now - fetch_production_historic_last) > fetch_production_historic_interval):
+                fetch_production_historic_last = time_now
+                fetch_production_historic()
+                logging.info("--> fetch_handler() --> fetch_production_historic(): JSON data feched. Wait %s seconds for next run" % fetch_production_historic_interval)
 
-            if fetch_devices_enabled == 1:
+            if fetch_devices_enabled == 1 and ((time_now - fetch_devices_last) > fetch_devices_interval):
+                fetch_devices_last = time_now
                 fetch_device_statuses()
+                logging.info("--> fetch_handler() --> fetch_device_statuses(): JSON data feched. Wait %s seconds for next run" % fetch_devices_interval)
 
-            if fetch_inverters_enabled == 1:
+            if fetch_inverters_enabled == 1 and ((time_now - fetch_inverters_last) > fetch_inverters_interval):
+                fetch_inverters_last = time_now
                 fetch_inverters()
+                logging.info("--> fetch_handler() --> fetch_inverters(): JSON data feched. Wait %s seconds for next run" % fetch_inverters_interval)
 
-            if fetch_events_enabled == 1:
+            if fetch_events_enabled == 1 and ((time_now - fetch_events_last) > fetch_events_interval):
+                fetch_events_last = time_now
                 fetch_events()
-
-            logging.info("--> fetch_handler(): JSON data feched. Wait %s seconds for next run" % config['ENVOY']['fetch_interval'])
+                logging.info("--> fetch_handler() --> fetch_events(): JSON data feched. Wait %s seconds for next run" % fetch_events_interval)
 
             # slow down requests to prevent overloading the Envoy
-            time.sleep(int(config['ENVOY']['fetch_interval']))
+            time.sleep(1)
 
         except Exception as e:
-            if int(config['ENVOY']['fetch_interval']) > 60:
-                sleep = int(config['ENVOY']['fetch_interval'])
+            if fetch_production_historic_interval > 60:
+                sleep = fetch_production_historic_interval
             else:
                 sleep = 60
 
@@ -407,6 +445,11 @@ def publish_mqtt_data():
 
     global client, config, keep_running, data_meter_stream, data_device_statuses, data_inverters, data_events
 
+    data_previous_meter_stream = {}
+    data_previous_device_statuses = {}
+    data_previous_inverters = {}
+    data_previous_events = {}
+
     while 1:
 
         if keep_running == False:
@@ -414,30 +457,41 @@ def publish_mqtt_data():
             sys.exit()
 
         try:
-            # check if data_meter_stream it's not empty
-            if data_meter_stream:
+            # check if data_meter_stream is not empty and data is changed
+            if data_meter_stream and data_previous_meter_stream != data_meter_stream:
+                data_previous_meter_stream = data_meter_stream
                 client.publish(config['MQTT']['topic_meters'], json.dumps(data_meter_stream))
+                logging.info("--> publish_mqtt_data() --> data_meter_stream: MQTT data published")
 
-            if fetch_devices_enabled == 1 and data_device_statuses:
+            # check if data_device_statuses is enabled, not empty and data is changed
+            if fetch_devices_enabled == 1 and data_device_statuses and data_previous_device_statuses != data_device_statuses:
+                data_previous_device_statuses = data_device_statuses
                 client.publish(config['MQTT']['topic_devices'], json.dumps(data_device_statuses))
+                logging.info("--> publish_mqtt_data() --> data_device_statuses: MQTT data published")
 
-            if fetch_inverters_enabled == 1 and data_inverters:
+            # check if data_inverters is enabled, not empty and data is changed
+            if fetch_inverters_enabled == 1 and data_inverters and data_previous_inverters != data_inverters:
+                data_previous_inverters = data_inverters
                 client.publish(config['MQTT']['topic_inverters'], json.dumps(data_inverters))
+                logging.info("--> publish_mqtt_data() --> data_inverters: MQTT data published")
 
-            if fetch_events_enabled == 1 and data_events:
+            # check if data_events is enabled, not empty and data is changed
+            if fetch_events_enabled == 1 and data_events and data_previous_events != data_events:
+                data_previous_events = data_events
                 client.publish(config['MQTT']['topic_events'], json.dumps(data_events))
+                logging.info("--> publish_mqtt_data() --> data_events: MQTT data published")
 
 
             # check if publish_interval is greater or equals 1, else the load is too much
             if int(config['MQTT']['publish_interval']) >= 1:
-                interval = int(config['MQTT']['publish_interval'])
+                publish_interval = int(config['MQTT']['publish_interval'])
             else:
-                interval = 1
+                publish_interval = 1
 
-            logging.info("--> publish_mqtt_data(): MQTT data published. Wait %s seconds for next run" % interval)
+            logging.info("--> publish_mqtt_data(): MQTT data published. Wait %s seconds for next run" % publish_interval)
 
             # slow down publishing to prevent overloading the Venus OS
-            time.sleep(interval)
+            time.sleep(publish_interval)
 
 
         except Exception as e:
@@ -543,7 +597,7 @@ class DbusEnphaseEnvoyPvService:
 
 
 def main():
-    global client, data_production_json
+    global client, data_production_historic
 
     _thread.daemon = True # allow the program to quit
 
@@ -590,8 +644,8 @@ def main():
 
     ## Enphase Envoy-S
     # fetch data for the first time to be able to use it in fetch_meter_stream()
-    fetch_production_json()
-    logging.info("--> fetch_production_json(): JSON production data feched")
+    fetch_production_historic()
+    logging.info("--> fetch_production_historic(): JSON production historic data feched")
 
     # fetch data for the first time alse MQTT outputs an empty status once
     if fetch_devices_enabled == 1:
