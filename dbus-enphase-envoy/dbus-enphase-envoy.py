@@ -17,7 +17,7 @@ import requests
 from requests.auth import HTTPDigestAuth
 from functools import reduce
 
-# our own packages
+# import Victron Energy packages
 sys.path.insert(1, os.path.join(os.path.dirname(__file__), 'ext', 'velib_python'))
 from vedbus import VeDbusService
 
@@ -43,6 +43,24 @@ if 'MQTT' in config and 'enabled' in config['MQTT'] and config['MQTT']['enabled'
 else:
     MQTT_enabled = 0
 
+# check if fetch_devices is enabled in config
+if 'DATA' in config and 'fetch_devices' in config['DATA'] and config['DATA']['fetch_devices'] == '1':
+    fetch_devices_enabled = 1
+else:
+    fetch_devices_enabled = 0
+
+# check if fetch_inverters is enabled in config
+if 'DATA' in config and 'fetch_inverters' in config['DATA'] and config['DATA']['fetch_inverters'] == '1':
+    fetch_inverters_enabled = 1
+else:
+    fetch_inverters_enabled = 0
+
+# check if fetch_events is enabled in config
+if 'DATA' in config and 'fetch_events' in config['DATA'] and config['DATA']['fetch_events'] == '1':
+    fetch_events_enabled = 1
+else:
+    fetch_events_enabled = 0
+
 
 # set variables
 connected = 0
@@ -50,6 +68,7 @@ keep_running = True
 
 replace_meters = ('production', 'pv'), ('net-consumption', 'grid'), ('total-consumption', 'consumption')
 replace_phases = ('ph-a', 'L1'), ('ph-b', 'L2'), ('ph-c', 'L3')
+replace_devices = ('PCU', 'inverters'), ('ACB', 'batteries'), ('NSRB', 'relais')
 
 pv_power = 0
 pv_current = 0
@@ -73,6 +92,9 @@ pv_L3_forward = 0
 
 data_meter_stream = {}
 data_production_json = {}
+data_device_statuses = {}
+data_inverters = {}
+data_events = {}
 
 
 # MQTT
@@ -97,7 +119,6 @@ def on_connect(client, userdata, flags, rc):
     if rc == 0:
         logging.info("MQTT client: Connected to MQTT broker!")
         connected = 1
-        client.subscribe(config['MQTT']['topic'])
     else:
         logging.info("MQTT client: Failed to connect, return code %d\n", rc)
 
@@ -105,7 +126,7 @@ def on_publish(client, userdata, rc):
     pass
 
 
-# ENPHASE - ENOVY
+# ENPHASE - ENOVY-S
 def fetch_meter_stream():
     logging.debug("step: fetch_meter_stream")
 
@@ -125,8 +146,9 @@ def fetch_meter_stream():
 
         for line in stream.iter_lines():
 
-            if (keep_running == False):
-                return
+            if keep_running == False:
+                logging.info('--> fetch_meter_stream(): got exit signal')
+                sys.exit()
 
             if line.startswith(marker):
                 data = json.loads(line.replace(marker, b''))
@@ -260,38 +282,85 @@ def fetch_production_json():
 
 def fetch_device_statuses():
     logging.debug("step: fetch_device_statuses")
+
+    global replace_devices, data_device_statuses
+
     url = 'http://%s/inventory.json' % config['ENVOY']['address']
     data = requests.get(url, timeout=5).json()
-    #print(data)
-    for inverter in data:
-        serial = inverter['serialNumber']
-        location = config['IQ7s'].get(serial, 'unknown')
-        inverter_gauges['last'].labels(serial=serial, location=location).set(inverter['lastReportWatts'])
-        inverter_gauges['max'].labels(serial=serial, location=location).set(inverter['maxReportWatts'])
+
+    total_jsonpayload = {}
+
+    for device_type in data:
+
+        device_name = reduce(lambda a, kv: a.replace(*kv), replace_devices, device_type['type'])
+
+        jsonpayload = {}
+
+        for device in device_type['devices']:
+
+            # TODO: better option?
+            if 'relay' in device:
+                jsonpayload.update({
+                    device['serial_num']: {
+                        "status": device['device_status'],
+                        "producing": device['producing'],
+                        "communicating": device['communicating'],
+                        "provisioned": device['provisioned'],
+                        "operating": device['operating'],
+                        "relay": device['relay'],
+                        "reason": device['reason'],
+                    }
+                })
+            else:
+                jsonpayload.update({
+                    device['serial_num']: {
+                        "status": device['device_status'],
+                        "producing": device['producing'],
+                        "communicating": device['communicating'],
+                        "provisioned": device['provisioned'],
+                        "operating": device['operating'],
+                    }
+                })
+
+        total_jsonpayload.update({device_name: jsonpayload})
+
+    # make fetched data globally available
+    data_device_statuses = total_jsonpayload
 
 
 def fetch_inverters():
     logging.debug("step: fetch_inverters")
+
+    global data_inverters
+
     url = 'http://%s/api/v1/production/inverters' % config['ENVOY']['address']
-    data = requests.get(url, auth=auth).json()
-    #print(data)
+    data = requests.get(url, auth=HTTPDigestAuth('installer', config['ENVOY']['password'])).json()
+
+    total_jsonpayload = {}
+
     for inverter in data:
-        serial = inverter['serialNumber']
-        location = config['IQ7s'].get(serial, 'unknown')
-        inverter_gauges['last'].labels(serial=serial, location=location).set(inverter['lastReportWatts'])
-        inverter_gauges['max'].labels(serial=serial, location=location).set(inverter['maxReportWatts'])
+
+        total_jsonpayload.update({
+            inverter['serialNumber']: {
+                'lastReportDate': inverter['lastReportDate'],
+                'lastReportWatts': inverter['lastReportWatts']
+            }
+        })
+
+    # make fetched data globally available
+    data_inverters = total_jsonpayload
 
 
 def fetch_events():
     logging.debug("step: fetch_events")
+
+    global data_events
+
     url = 'http://%s/datatab/event_dt.rb?start=0&length=10' % config['ENVOY']['address']
     data = requests.get(url, timeout=5).json()
-    #print(data)
-    for inverter in data:
-        serial = inverter['serialNumber']
-        location = config['IQ7s'].get(serial, 'unknown')
-        inverter_gauges['last'].labels(serial=serial, location=location).set(inverter['lastReportWatts'])
-        inverter_gauges['max'].labels(serial=serial, location=location).set(inverter['maxReportWatts'])
+
+    # make fetched data globally available
+    data_events = data['aaData']
 
 
 def fetch_handler():
@@ -301,17 +370,21 @@ def fetch_handler():
 
     while 1:
 
-        if (keep_running == False):
-            return
+        if keep_running == False:
+            logging.info('--> fetch_handler(): got exit signal')
+            sys.exit()
 
         try:
             fetch_production_json()
 
-            #if 'DATA' in config and 'fetch_devices' in config['DATA'] and config['DATA']['fetch_devices'] == '1':
-            #    fetch_inverters()
+            if fetch_devices_enabled == 1:
+                fetch_device_statuses()
 
-            #if 'DATA' in config and 'fetch_events' in config['DATA'] and config['DATA']['fetch_events'] == '1':
-            #fetch_events()
+            if fetch_inverters_enabled == 1:
+                fetch_inverters()
+
+            if fetch_events_enabled == 1:
+                fetch_events()
 
             logging.info("--> fetch_handler(): JSON data feched. Wait %s seconds for next run" % config['ENVOY']['fetch_interval'])
 
@@ -319,39 +392,52 @@ def fetch_handler():
             time.sleep(int(config['ENVOY']['fetch_interval']))
 
         except Exception as e:
-            logging.info('Exception fetching scrape data: %s' % e)
-            keep_running = False
-            sys.exit()
+            if int(config['ENVOY']['fetch_interval']) > 60:
+                sleep = int(config['ENVOY']['fetch_interval'])
+            else:
+                sleep = 60
+
+            logging.info('--> fetch_handler(): Exception occurred: \"%s\". Try again in %s seconds' % (e, sleep))
+            time.sleep(sleep)
+
 
 
 def publish_mqtt_data():
     logging.debug("step: publish_mqtt_data")
 
-    global client, config, keep_running, data_meter_stream
+    global client, config, keep_running, data_meter_stream, data_device_statuses, data_inverters, data_events
 
     while 1:
 
-        if (keep_running == False):
-            return
+        if keep_running == False:
+            logging.info('--> publish_mqtt_data(): got exit signal')
+            sys.exit()
 
         try:
+            # check if data_meter_stream it's not empty
             if data_meter_stream:
-                client.publish(config['MQTT']['topic'], json.dumps(data_meter_stream))
+                client.publish(config['MQTT']['topic_meters'], json.dumps(data_meter_stream))
 
-                # check if publish_interval is greater or equals 1, else the load is too much
-                if int(config['MQTT']['publish_interval']) >= 1:
-                    interval = int(config['MQTT']['publish_interval'])
-                else:
-                    interval = 1
+            if fetch_devices_enabled == 1 and data_device_statuses:
+                client.publish(config['MQTT']['topic_devices'], json.dumps(data_device_statuses))
 
-                logging.info("--> publish_mqtt_data(): MQTT data published. Wait %s seconds for next run" % interval
+            if fetch_inverters_enabled == 1 and data_inverters:
+                client.publish(config['MQTT']['topic_inverters'], json.dumps(data_inverters))
 
-                # slow down requests to prevent overloading the Envoy
-                if int(config['MQTT']['publish_interval']) > 1:
-                    time.sleep(interval)
+            if fetch_events_enabled == 1 and data_events:
+                client.publish(config['MQTT']['topic_events'], json.dumps(data_events))
 
+
+            # check if publish_interval is greater or equals 1, else the load is too much
+            if int(config['MQTT']['publish_interval']) >= 1:
+                interval = int(config['MQTT']['publish_interval'])
             else:
-                time.sleep(1)
+                interval = 1
+
+            logging.info("--> publish_mqtt_data(): MQTT data published. Wait %s seconds for next run" % interval)
+
+            # slow down publishing to prevent overloading the Venus OS
+            time.sleep(interval)
 
 
         except Exception as e:
@@ -406,6 +492,11 @@ class DbusEnphaseEnvoyPvService:
 
 
     def _update(self):
+
+        if keep_running == False:
+            logging.info('--> DbusEnphaseEnvoyPvService->_update(): got exit signal')
+            sys.exit()
+
         self._dbusservice['/Ac/Power'] =  round(pv_power, 2)
         self._dbusservice['/Ac/Current'] = round(pv_current, 2)
         self._dbusservice['/Ac/Voltage'] = round(pv_voltage, 2)
@@ -449,14 +540,6 @@ class DbusEnphaseEnvoyPvService:
     def _handlechangedvalue(self, path, value):
         logging.debug("someone else updated %s to %s" % (path, value))
         return True # accept the change
-
-
-def exit(signal, frame):
-    logger.debug("step: exit")
-
-    global keep_running
-
-    keep_running = False
 
 
 def main():
@@ -505,10 +588,21 @@ def main():
 
 
 
-    ## Enphase Envoy
+    ## Enphase Envoy-S
     # fetch data for the first time to be able to use it in fetch_meter_stream()
     fetch_production_json()
     logging.info("--> fetch_production_json(): JSON production data feched")
+
+    # fetch data for the first time alse MQTT outputs an empty status once
+    if fetch_devices_enabled == 1:
+        fetch_device_statuses()
+
+    if fetch_inverters_enabled == 1:
+        fetch_inverters()
+
+    if fetch_events_enabled == 1:
+        fetch_events()
+
 
     # start threat for fetching data every x seconds in background
     fetch_handler_thread = threading.Thread(target=fetch_handler)

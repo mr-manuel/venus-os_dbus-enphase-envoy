@@ -14,7 +14,13 @@ This script adds the Enphase Microinverters as a single PV system in Venus OS. T
 It is also possible to publish the following data as JSON to an MQTT topic for other use (can be enabled in `config.ini`). For each list element a different topic is needed:
 
 * **Meters** (PV, Grid, Consumption): Power, current, voltage, powerreact, powerappearent, powerfactor, frequency, whToday, vahToday, whLifetime, vahLifetime for total (except: powerfactor and frequency), L1, L2 and L3
-* **Devices** (Microinverters, Q-Relay): Serial number, device status, producing, communicating, provisioned, operating for microinverter (additional: last report date, last report watts, max report watts) and Q-Relay (additional: relay [opened/closed], reason)
+
+* **Devices** (Microinverters, Q-Relay): Serial number, device status, producing, communicating, provisioned and operating.
+
+  * For microinverter additionaly: last report date, last report watts, max report watts
+
+  * For Q-Relay additionaly: relay [opened/closed], reason
+
 * **Events**: Latest x events from the Enphase Envoy-S
 
 
