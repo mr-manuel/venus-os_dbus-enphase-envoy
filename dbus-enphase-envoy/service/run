@@ -1,3 +1,4 @@
 #!/bin/sh
 echo "*** starting dbus-enphase-envoy ***"
-python /data/etc/dbus-enphase-envoy/dbus-enphase-envoy.py
+exec 2>&1
+exec /data/etc/dbus-enphase-envoy/dbus-enphase-envoy.py

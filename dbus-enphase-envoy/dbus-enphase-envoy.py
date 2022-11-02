@@ -22,18 +22,17 @@ sys.path.insert(1, os.path.join(os.path.dirname(__file__), 'ext', 'velib_python'
 from vedbus import VeDbusService
 
 # use INFO for less logging, DEBUG for debugging
-logging.basicConfig(level=logging.INFO)
-
+logging.basicConfig(level=logging.WARNING)
 
 # get values from config.ini file
 try:
     config = configparser.ConfigParser()
     config.read("%s/config.ini" % (os.path.dirname(os.path.realpath(__file__))))
     if (config['ENVOY']['address'] == "IP_ADDR_OR_FQDN"):
-        logging.info("config.ini file using invalid default values.")
+        logging.error("config.ini file using invalid default values.")
         raise
 except:
-    logging.info("config.ini file not found. Copy or rename the config.sample.ini to config.ini")
+    logging.error("config.ini file not found. Copy or rename the config.sample.ini to config.ini")
     sys.exit()
 
 
@@ -124,7 +123,7 @@ data_events = {}
 # MQTT
 def on_disconnect(client, userdata, rc):
     global connected
-    logging.info("MQTT client: Got disconnected")
+    logging.warning("MQTT client: Got disconnected")
     if rc != 0:
         logging.debug('MQTT client: Unexpected MQTT disconnection. Will auto-reconnect')
     else:
@@ -135,7 +134,7 @@ def on_disconnect(client, userdata, rc):
         client.connect(config['MQTT']['broker_address'])
         connected = 1
     except Exception as e:
-        logging.exception("MQTT client:Error in retrying to connect with broker: %s" % e)
+        logging.error("MQTT client:Error in retrying to connect with broker: %s" % e)
         connected = 0
 
 def on_connect(client, userdata, flags, rc):
@@ -144,7 +143,7 @@ def on_connect(client, userdata, flags, rc):
         logging.info("MQTT client: Connected to MQTT broker!")
         connected = 1
     else:
-        logging.info("MQTT client: Failed to connect, return code %d\n", rc)
+        logging.error("MQTT client: Failed to connect, return code %d\n", rc)
 
 def on_publish(client, userdata, rc):
     pass
@@ -435,7 +434,7 @@ def fetch_handler():
             else:
                 sleep = 60
 
-            logging.info('--> fetch_handler(): Exception occurred: \"%s\". Try again in %s seconds' % (e, sleep))
+            logging.warning('--> fetch_handler(): Exception occurred: \"%s\". Try again in %s seconds' % (e, sleep))
             time.sleep(sleep)
 
 
@@ -495,7 +494,7 @@ def publish_mqtt_data():
 
 
         except Exception as e:
-            logging.info('Exception publishing MQTT data: %s' % e)
+            logging.error('Exception publishing MQTT data: %s' % e)
             keep_running = False
             sys.exit()
 
