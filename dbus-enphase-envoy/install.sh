@@ -3,22 +3,11 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 SERVICE_NAME=$(basename $SCRIPT_DIR)
 
 # set permissions for script files
-chmod a+x $SCRIPT_DIR/$SERVICE_NAME.py
 chmod 744 $SCRIPT_DIR/$SERVICE_NAME.py
-
-chmod a+x $SCRIPT_DIR/install.sh
 chmod 744 $SCRIPT_DIR/install.sh
-
-chmod a+x $SCRIPT_DIR/restart.sh
 chmod 744 $SCRIPT_DIR/restart.sh
-
-chmod a+x $SCRIPT_DIR/uninstall.sh
 chmod 744 $SCRIPT_DIR/uninstall.sh
-
-chmod a+x $SCRIPT_DIR/service/run
 chmod 755 $SCRIPT_DIR/service/run
-
-chmod a+x $SCRIPT_DIR/service/log/run
 chmod 755 $SCRIPT_DIR/service/log/run
 
 # create sym-link to run script in deamon

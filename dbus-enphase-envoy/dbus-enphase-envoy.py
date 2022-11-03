@@ -21,7 +21,7 @@ from functools import reduce
 sys.path.insert(1, os.path.join(os.path.dirname(__file__), 'ext', 'velib_python'))
 from vedbus import VeDbusService
 
-# use INFO for less logging, DEBUG for debugging
+# use WARNING for default, INFO for displaying actual steps and values, DEBUG for debugging
 logging.basicConfig(level=logging.WARNING)
 
 # get values from config.ini file
@@ -56,9 +56,15 @@ if 'DATA' in config and 'fetch_devices' in config['DATA'] and config['DATA']['fe
         fetch_devices_interval = int(config['DATA']['fetch_devices_interval'])
     else:
         fetch_devices_interval = 60
+    # check fetch_devices_publishing_type
+    if 'DATA' in config and 'fetch_devices_publishing_type' in config['DATA'] and config['DATA']['fetch_devices_publishing_type'] == '0':
+        fetch_devices_publishing_type = 0
+    else:
+        fetch_devices_publishing_type = 1
 else:
     fetch_devices_enabled = 0
     fetch_devices_interval = 3600
+    fetch_devices_publishing_type = 0
 
 # check if fetch_inverters is enabled in config
 if 'DATA' in config and 'fetch_inverters' in config['DATA'] and config['DATA']['fetch_inverters'] == '1':
@@ -68,9 +74,15 @@ if 'DATA' in config and 'fetch_inverters' in config['DATA'] and config['DATA']['
         fetch_inverters_interval = int(config['DATA']['fetch_inverters_interval'])
     else:
         fetch_inverters_interval = 5
+    # check fetch_inverters_publishing_type
+    if 'DATA' in config and 'fetch_inverters_publishing_type' in config['DATA'] and config['DATA']['fetch_inverters_publishing_type'] == '0':
+        fetch_inverters_publishing_type = 0
+    else:
+        fetch_inverters_publishing_type = 1
 else:
     fetch_inverters_enabled = 0
     fetch_inverters_interval = 60
+    fetch_inverters_publishing_type = 0
 
 # check if fetch_events is enabled in config
 if 'DATA' in config and 'fetch_events' in config['DATA'] and config['DATA']['fetch_events'] == '1':
@@ -80,9 +92,15 @@ if 'DATA' in config and 'fetch_events' in config['DATA'] and config['DATA']['fet
         fetch_events_interval = int(config['DATA']['fetch_events_interval'])
     else:
         fetch_events_interval = 900
+    # check fetch_events_publishing_type
+    if 'DATA' in config and 'fetch_events_publishing_type' in config['DATA'] and config['DATA']['fetch_events_publishing_type'] == '0':
+        fetch_events_publishing_type = 0
+    else:
+        fetch_events_publishing_type = 1
 else:
     fetch_events_enabled = 0
     fetch_events_interval = 3600
+    fetch_events_publishing_type = 0
 
 
 # set variables
@@ -115,7 +133,7 @@ pv_L3_forward = 0
 
 data_meter_stream = {}
 data_production_historic = {}
-data_device_statuses = {}
+data_devices = {}
 data_inverters = {}
 data_events = {}
 
@@ -303,10 +321,10 @@ def fetch_production_historic():
     data_production_historic = total_jsonpayload
 
 
-def fetch_device_statuses():
-    logging.debug("step: fetch_device_statuses")
+def fetch_devices():
+    logging.debug("step: fetch_devices")
 
-    global replace_devices, data_device_statuses
+    global replace_devices, data_devices
 
     url = 'http://%s/inventory.json' % config['ENVOY']['address']
     data = requests.get(url, timeout=5).json()
@@ -348,7 +366,7 @@ def fetch_device_statuses():
         total_jsonpayload.update({device_name: jsonpayload})
 
     # make fetched data globally available
-    data_device_statuses = total_jsonpayload
+    data_devices = total_jsonpayload
 
 
 def fetch_inverters():
@@ -382,8 +400,21 @@ def fetch_events():
     url = 'http://%s/datatab/event_dt.rb?start=0&length=10' % config['ENVOY']['address']
     data = requests.get(url, timeout=5).json()
 
+    total_jsonpayload = {}
+
+    for event in data['aaData']:
+
+        total_jsonpayload.update({
+            event[0]: {
+                'message': event[1],
+                'serialNumber': event[2],
+                'type': event[3],
+                'datetime': event[4],
+            }
+        })
+
     # make fetched data globally available
-    data_events = data['aaData']
+    data_events = total_jsonpayload
 
 
 def fetch_handler():
@@ -412,8 +443,8 @@ def fetch_handler():
 
             if fetch_devices_enabled == 1 and ((time_now - fetch_devices_last) > fetch_devices_interval):
                 fetch_devices_last = time_now
-                fetch_device_statuses()
-                logging.info("--> fetch_handler() --> fetch_device_statuses(): JSON data feched. Wait %s seconds for next run" % fetch_devices_interval)
+                fetch_devices()
+                logging.info("--> fetch_handler() --> fetch_devices(): JSON data feched. Wait %s seconds for next run" % fetch_devices_interval)
 
             if fetch_inverters_enabled == 1 and ((time_now - fetch_inverters_last) > fetch_inverters_interval):
                 fetch_inverters_last = time_now
@@ -442,10 +473,10 @@ def fetch_handler():
 def publish_mqtt_data():
     logging.debug("step: publish_mqtt_data")
 
-    global client, config, keep_running, data_meter_stream, data_device_statuses, data_inverters, data_events
+    global client, config, keep_running, data_meter_stream, data_devices, data_inverters, data_events
 
     data_previous_meter_stream = {}
-    data_previous_device_statuses = {}
+    data_previous_devices = {}
     data_previous_inverters = {}
     data_previous_events = {}
 
@@ -462,20 +493,62 @@ def publish_mqtt_data():
                 client.publish(config['MQTT']['topic_meters'], json.dumps(data_meter_stream))
                 logging.info("--> publish_mqtt_data() --> data_meter_stream: MQTT data published")
 
-            # check if data_device_statuses is enabled, not empty and data is changed
-            if fetch_devices_enabled == 1 and data_device_statuses and data_previous_device_statuses != data_device_statuses:
-                data_previous_device_statuses = data_device_statuses
-                client.publish(config['MQTT']['topic_devices'], json.dumps(data_device_statuses))
-                logging.info("--> publish_mqtt_data() --> data_device_statuses: MQTT data published")
+            # check if data_devices is enabled, not empty and data is changed
+            if (
+                fetch_devices_enabled == 1
+                and
+                data_devices
+                and
+                (
+                    (
+                        fetch_devices_publishing_type == 0
+                        and
+                        data_previous_devices != data_devices
+                    )
+                    or
+                    fetch_devices_publishing_type == 1
+                )
+            ):
+                data_previous_devices = data_devices
+                client.publish(config['MQTT']['topic_devices'], json.dumps(data_devices))
+                logging.info("--> publish_mqtt_data() --> data_devices: MQTT data published")
 
             # check if data_inverters is enabled, not empty and data is changed
-            if fetch_inverters_enabled == 1 and data_inverters and data_previous_inverters != data_inverters:
+            if (
+                fetch_inverters_enabled == 1
+                and
+                data_inverters
+                and
+                (
+                    (
+                        fetch_inverters_publishing_type == 0
+                        and
+                        data_previous_inverters != data_inverters
+                    )
+                    or
+                    fetch_inverters_publishing_type == 1
+                )
+            ):
                 data_previous_inverters = data_inverters
                 client.publish(config['MQTT']['topic_inverters'], json.dumps(data_inverters))
                 logging.info("--> publish_mqtt_data() --> data_inverters: MQTT data published")
 
             # check if data_events is enabled, not empty and data is changed
-            if fetch_events_enabled == 1 and data_events and data_previous_events != data_events:
+            if (
+                fetch_events_enabled == 1
+                and
+                data_events
+                and
+                (
+                    (
+                        fetch_events_publishing_type == 0
+                        and
+                        data_previous_events != data_events
+                    )
+                    or
+                    fetch_events_publishing_type == 1
+                )
+            ):
                 data_previous_events = data_events
                 client.publish(config['MQTT']['topic_events'], json.dumps(data_events))
                 logging.info("--> publish_mqtt_data() --> data_events: MQTT data published")
@@ -648,7 +721,7 @@ def main():
 
     # fetch data for the first time alse MQTT outputs an empty status once
     if fetch_devices_enabled == 1:
-        fetch_device_statuses()
+        fetch_devices()
 
     if fetch_inverters_enabled == 1:
         fetch_inverters()
