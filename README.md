@@ -9,9 +9,9 @@ I wrote this script for myself. I'm not responsible, if you damage something usi
 
 ### Purpose
 
-This script adds the Enphase Microinverters as a single PV system in Venus OS. The data is fetched from the Enphase Envoy-S device and published on the dbus as the service `com.victronenergy.pvinverter.enphase_envoy` with the VRM instance `61`. The number of phases are automatically recognized, so it displays automatically the number of phases you are using (one, two or three).
+This script adds the Enphase Microinverters as a single PV system in Venus OS. The data is fetched from the Enphase Envoy-S device and publishes on the dbus as the service `com.victronenergy.pvinverter.enphase_envoy` with the VRM instance `61`. The number of phases are automatically recognized, so it displays automatically the number of phases you are using (one, two or three).
 
-It is also possible to publish the following data as JSON to an MQTT topic for other use (can be enabled in `config.ini`). For each list element a different topic is needed:
+It is also possible to publish the following data as JSON to a MQTT topic for other use (can be enabled in `config.ini`). For each list element a different topic is needed:
 
 * **Meters** (PV, Grid, Consumption): Power, current, voltage, powerreact, powerappearent, powerfactor, frequency, whToday, vahToday, whLifetime, vahLifetime for total (except: powerfactor and frequency), L1, L2 and L3
 
@@ -22,7 +22,9 @@ It is also possible to publish the following data as JSON to an MQTT topic for o
 * **Events**: Latest 10 events from the Enphase Envoy-S
 
 
-If you also want to have the grid meter from the Enphase Envoy-S in Venus OS, then install the [mr-manuel/venus-os_dbus-mqtt-grid](https://github.com/mr-manuel/venus-os_dbus-mqtt-grid) and insert the same MQTT broker and topic in the `config.ini`. Shoudn't you already have a MQTT broker, than you can enable the Venus OS integrated MQTT broker `Venus OS GUI -> Menu -> Services -> MQTT on LAN (SSL) and if desired MQTT on LAN (Plaintext)`. In the `config.ini` insert the IP address of the Venus OS device or `127.0.0.1`.
+If you also want to use the Enphase Envoy-S as grid meter in Venus OS, then install the [mr-manuel/venus-os_dbus-mqtt-grid](https://github.com/mr-manuel/venus-os_dbus-mqtt-grid) package and insert the same MQTT broker and topic_meters in the `dbus-mqtt-grid/config.ini` as in `dbus-enphase-envoy/config.ini`. Don't forget to enable MQTT in the `dbus-enphase-envoy/config.ini`.
+
+Shoudn't you already have a MQTT broker, than you can enable the Venus OS integrated MQTT broker under Venus OS GUI -> Menu -> Services -> MQTT on LAN (SSL) and if desired MQTT on LAN (Plaintext). In the `config.ini` insert the IP address of the Venus OS device or `127.0.0.1`.
 
 ### Config
 
@@ -347,7 +349,7 @@ Run `/data/etc/dbus-enphase-envoy/restart.sh`
 
 ### Debugging
 
-The logs can be checked with `tail -n 100 -f /data/log/dbus-enphase-envoy/current`
+The logs can be checked with `tail -n 100 -f /data/log/dbus-enphase-envoy/current | tai64nlocal`
 
 The service status can be checked with svstat `svstat /service/dbus-enphase-envoy`
 

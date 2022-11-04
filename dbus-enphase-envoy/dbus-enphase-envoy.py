@@ -1,6 +1,4 @@
 #!/usr/bin/env python
-# TODO: Add device statuses
-# TODO: Add events
 
 from gi.repository import GLib
 import platform
@@ -12,6 +10,7 @@ import json
 import paho.mqtt.client as mqtt
 import configparser # for config/ini file
 import _thread
+
 import threading
 import requests
 from requests.auth import HTTPDigestAuth
@@ -152,7 +151,7 @@ def on_disconnect(client, userdata, rc):
         client.connect(config['MQTT']['broker_address'])
         connected = 1
     except Exception as e:
-        logging.error("MQTT client:Error in retrying to connect with broker: %s" % e)
+        logging.error("MQTT client: Error in retrying to connect with broker: %s" % e)
         connected = 0
 
 def on_connect(client, userdata, flags, rc):
@@ -177,93 +176,125 @@ def fetch_meter_stream():
 
     while 1:
 
-        url = 'http://%s/stream/meter' % config['ENVOY']['address']
-        stream = requests.get(
-            url,
-            auth=HTTPDigestAuth('installer', config['ENVOY']['password']),
-            stream=True,
-            timeout=5
-        )
+        try:
 
-        for line in stream.iter_lines():
+            url = 'http://%s/stream/meter' % config['ENVOY']['address']
+            stream = requests.get(
+                url,
+                auth=HTTPDigestAuth('installer', config['ENVOY']['password']),
+                stream=True,
+                timeout=5
+            )
 
-            if keep_running == False:
-                logging.info('--> fetch_meter_stream(): got exit signal')
-                sys.exit()
+            for line in stream.iter_lines():
 
-            if line.startswith(marker):
-                data = json.loads(line.replace(marker, b''))
+                if keep_running == False:
+                    logging.info('--> fetch_meter_stream(): got exit signal')
+                    sys.exit()
 
-                total_jsonpayload = {}
-                pvVars = globals()
+                if line.startswith(marker):
+                    data = json.loads(line.replace(marker, b''))
 
-                for meter in ['production', 'net-consumption', 'total-consumption']:
+                    total_jsonpayload = {}
+                    pvVars = globals()
 
-                    meter_name = reduce(lambda a, kv: a.replace(*kv), replace_meters, meter)
+                    for meter in ['production', 'net-consumption', 'total-consumption']:
 
-                    jsonpayload = {}
+                        meter_name = reduce(lambda a, kv: a.replace(*kv), replace_meters, meter)
 
-                    total_power           = 0
-                    total_current         = 0
-                    total_voltage         = 0
-                    total_power_react     = 0
-                    total_power_appearent = 0
+                        jsonpayload = {}
 
-                    for phase in ['ph-a', 'ph-b', 'ph-c']:
+                        total_power           = 0
+                        total_current         = 0
+                        total_voltage         = 0
+                        total_power_react     = 0
+                        total_power_appearent = 0
 
-                        phase_name = reduce(lambda a, kv: a.replace(*kv), replace_phases, phase)
+                        for phase in ['ph-a', 'ph-b', 'ph-c']:
 
-                        if data[meter][phase]['v'] > 0:
+                            phase_name = reduce(lambda a, kv: a.replace(*kv), replace_phases, phase)
 
-                            total_power           += float(data[meter][phase]['p'])
-                            total_current         += float(data[meter][phase]['i'])
-                            total_voltage         += float(data[meter][phase]['v'])
-                            total_power_react     += float(data[meter][phase]['q'])
-                            total_power_appearent += float(data[meter][phase]['s'])
+                            if data[meter][phase]['v'] > 0:
 
-                            jsonpayload.update({
-                                phase_name: {
-                                    'power': float(data[meter][phase]['p']),
-                                    'current': float(data[meter][phase]['i']),
-                                    'voltage': float(data[meter][phase]['v']),
-                                    'power_react': float(data[meter][phase]['q']),
-                                    'power_appearent': float(data[meter][phase]['s']),
-                                    'power_factor': float(data[meter][phase]['pf']),
-                                    'frequency': float(data[meter][phase]['f']),
-                                    'whToday': data_production_historic[meter_name][phase_name]['whToday'],
-                                    'vahToday': data_production_historic[meter_name][phase_name]['vahToday'],
-                                    'whLifetime': data_production_historic[meter_name][phase_name]['whLifetime'],
-                                    'vahLifetime': data_production_historic[meter_name][phase_name]['vahLifetime'],
-                                }
-                            })
+                                total_power           += float(data[meter][phase]['p'])
+                                total_current         += float(data[meter][phase]['i'])
+                                total_voltage         += float(data[meter][phase]['v'])
+                                total_power_react     += float(data[meter][phase]['q'])
+                                total_power_appearent += float(data[meter][phase]['s'])
 
-                            if meter == 'production':
-                                pvVars.__setitem__('pv_' + phase_name + '_power', float(data[meter][phase]['p']))
-                                pvVars.__setitem__('pv_' + phase_name + '_current', float(data[meter][phase]['i']))
-                                pvVars.__setitem__('pv_' + phase_name + '_voltage', float(data[meter][phase]['v']))
+                                jsonpayload.update({
+                                    phase_name: {
+                                        'power': float(data[meter][phase]['p']),
+                                        'current': float(data[meter][phase]['i']),
+                                        'voltage': float(data[meter][phase]['v']),
+                                        'power_react': float(data[meter][phase]['q']),
+                                        'power_appearent': float(data[meter][phase]['s']),
+                                        'power_factor': float(data[meter][phase]['pf']),
+                                        'frequency': float(data[meter][phase]['f']),
+                                        'whToday': data_production_historic[meter_name][phase_name]['whToday'],
+                                        'vahToday': data_production_historic[meter_name][phase_name]['vahToday'],
+                                        'whLifetime': data_production_historic[meter_name][phase_name]['whLifetime'],
+                                        'vahLifetime': data_production_historic[meter_name][phase_name]['vahLifetime'],
+                                    }
+                                })
+
+                                if meter == 'production':
+                                    pvVars.__setitem__('pv_' + phase_name + '_power', float(data[meter][phase]['p']))
+                                    pvVars.__setitem__('pv_' + phase_name + '_current', float(data[meter][phase]['i']))
+                                    pvVars.__setitem__('pv_' + phase_name + '_voltage', float(data[meter][phase]['v']))
 
 
-                    jsonpayload.update({
-                        'power': total_power,
-                        'current': total_current,
-                        'voltage': total_voltage,
-                        'power_react': total_power_react,
-                        'power_appearent': total_power_appearent,
-                        'whToday': data_production_historic[meter_name]['whToday'],
-                        'vahToday': data_production_historic[meter_name]['vahToday'],
-                        'whLifetime': data_production_historic[meter_name]['whLifetime'],
-                        'vahLifetime': data_production_historic[meter_name]['vahLifetime'],
-                    })
+                        jsonpayload.update({
+                            'power': total_power,
+                            'current': total_current,
+                            'voltage': total_voltage,
+                            'power_react': total_power_react,
+                            'power_appearent': total_power_appearent,
+                            'whToday': data_production_historic[meter_name]['whToday'],
+                            'vahToday': data_production_historic[meter_name]['vahToday'],
+                            'whLifetime': data_production_historic[meter_name]['whLifetime'],
+                            'vahLifetime': data_production_historic[meter_name]['vahLifetime'],
+                        })
 
-                    if meter == 'production':
-                        pv_power = total_power
-                        pv_current = total_current
-                        pv_voltage = total_voltage
+                        if meter == 'production':
+                            pv_power = total_power
+                            pv_current = total_current
+                            pv_voltage = total_voltage
 
-                    total_jsonpayload.update({meter_name: jsonpayload})
+                        total_jsonpayload.update({meter_name: jsonpayload})
 
-                # make fetched data globally available
-                data_meter_stream = total_jsonpayload
+                    # make fetched data globally available
+                    data_meter_stream = total_jsonpayload
+
+        except requests.exceptions.RequestException as e:
+            logging.error('--> fetch_meter_stream(): RequestException occurred: \"%s\"' % e)
+            keep_running = False
+            sys.exit()
+
+        except requests.exceptions.ConnectionError as e:
+            logging.error('--> fetch_meter_stream(): ConnectionError occurred: \"%s\"' % e)
+            keep_running = False
+            sys.exit()
+
+        except requests.exceptions.ConnectTimeout as e:
+            logging.error('--> fetch_meter_stream(): ConnectTimeout occurred: \"%s\"' % e)
+            keep_running = False
+            sys.exit()
+
+        except requests.exceptions.ReadTimeout as e:
+            logging.error('--> fetch_meter_stream(): ReadTimeout occurred: \"%s\"' % e)
+            keep_running = False
+            sys.exit()
+
+        except requests.exceptions.Timeout as e:
+            logging.error('--> fetch_meter_stream(): Timeout occurred: \"%s\"' % e)
+            keep_running = False
+            sys.exit()
+
+        except Exception as e:
+            logging.error('--> fetch_meter_stream(): Exception occurred: \"%s\"' % e)
+            keep_running = False
+            sys.exit()
 
 
 def fetch_production_historic():
@@ -567,7 +598,7 @@ def publish_mqtt_data():
 
 
         except Exception as e:
-            logging.error('Exception publishing MQTT data: %s' % e)
+            logging.error('--> publish_mqtt_data(): Exception publishing MQTT data: %s' % e)
             keep_running = False
             sys.exit()
 
@@ -731,19 +762,19 @@ def main():
 
 
     # start threat for fetching data every x seconds in background
-    fetch_handler_thread = threading.Thread(target=fetch_handler)
-    fetch_handler_thread.setDaemon(True)
+    fetch_handler_thread = threading.Thread(target=fetch_handler, name='Thread-FetchHandler')
+    fetch_handler_thread.daemon = True
     fetch_handler_thread.start()
 
     # start threat for fetching continuously the stream in background
-    fetch_meter_stream_thread = threading.Thread(target=fetch_meter_stream)
-    fetch_meter_stream_thread.setDaemon(True)
+    fetch_meter_stream_thread = threading.Thread(target=fetch_meter_stream, name='Thread-FetchMeterStream')
+    fetch_meter_stream_thread.daemon = True
     fetch_meter_stream_thread.start()
 
     # start threat for publishing mqtt data in background
     if MQTT_enabled == 1:
-        publish_mqtt_data_thread = threading.Thread(target=publish_mqtt_data)
-        publish_mqtt_data_thread.setDaemon(True)
+        publish_mqtt_data_thread = threading.Thread(target=publish_mqtt_data, name='Thread-PublishMqttData')
+        publish_mqtt_data_thread.daemon = True
         publish_mqtt_data_thread.start()
 
 
