@@ -370,29 +370,21 @@ def fetch_devices():
 
         for device in device_type['devices']:
 
-            # TODO: better option?
+            device_data = {
+                "status": device['device_status'],
+                "producing": device['producing'],
+                "communicating": device['communicating'],
+                "provisioned": device['provisioned'],
+                "operating": device['operating'],
+            }
+
             if 'relay' in device:
-                jsonpayload.update({
-                    device['serial_num']: {
-                        "status": device['device_status'],
-                        "producing": device['producing'],
-                        "communicating": device['communicating'],
-                        "provisioned": device['provisioned'],
-                        "operating": device['operating'],
+                device_data.update({
                         "relay": device['relay'],
                         "reason": device['reason'],
-                    }
                 })
-            else:
-                jsonpayload.update({
-                    device['serial_num']: {
-                        "status": device['device_status'],
-                        "producing": device['producing'],
-                        "communicating": device['communicating'],
-                        "provisioned": device['provisioned'],
-                        "operating": device['operating'],
-                    }
-                })
+
+            jsonpayload.update({device['serial_num']: device_data})
 
         total_jsonpayload.update({device_name: jsonpayload})
 
@@ -466,39 +458,40 @@ def fetch_handler():
 
         time_now = int(time.time())
 
-        try:
-            if ((time_now - fetch_production_historic_last) > fetch_production_historic_interval):
-                fetch_production_historic_last = time_now
+        if ((time_now - fetch_production_historic_last) > fetch_production_historic_interval):
+            fetch_production_historic_last = time_now
+            try:
                 fetch_production_historic()
                 logging.info("--> fetch_handler() --> fetch_production_historic(): JSON data feched. Wait %s seconds for next run" % fetch_production_historic_interval)
+            except Exception as e:
+                logging.error('--> fetch_handler() --> fetch_production_historic(): Exception occurred: \"%s\". Try again in %s seconds' % (e, fetch_production_historic_interval))
 
-            if fetch_devices_enabled == 1 and ((time_now - fetch_devices_last) > fetch_devices_interval):
-                fetch_devices_last = time_now
+        if fetch_devices_enabled == 1 and ((time_now - fetch_devices_last) > fetch_devices_interval):
+            fetch_devices_last = time_now
+            try:
                 fetch_devices()
                 logging.info("--> fetch_handler() --> fetch_devices(): JSON data feched. Wait %s seconds for next run" % fetch_devices_interval)
+            except Exception as e:
+                logging.error('--> fetch_handler() --> fetch_devices(): Exception occurred: \"%s\". Try again in %s seconds' % (e, fetch_devices_interval))
 
-            if fetch_inverters_enabled == 1 and ((time_now - fetch_inverters_last) > fetch_inverters_interval):
-                fetch_inverters_last = time_now
+        if fetch_inverters_enabled == 1 and ((time_now - fetch_inverters_last) > fetch_inverters_interval):
+            fetch_inverters_last = time_now
+            try:
                 fetch_inverters()
                 logging.info("--> fetch_handler() --> fetch_inverters(): JSON data feched. Wait %s seconds for next run" % fetch_inverters_interval)
+            except Exception as e:
+                logging.error('--> fetch_handler() --> fetch_inverters(): Exception occurred: \"%s\". Try again in %s seconds' % (e, fetch_inverters_interval))
 
-            if fetch_events_enabled == 1 and ((time_now - fetch_events_last) > fetch_events_interval):
-                fetch_events_last = time_now
+        if fetch_events_enabled == 1 and ((time_now - fetch_events_last) > fetch_events_interval):
+            fetch_events_last = time_now
+            try:
                 fetch_events()
                 logging.info("--> fetch_handler() --> fetch_events(): JSON data feched. Wait %s seconds for next run" % fetch_events_interval)
+            except Exception as e:
+                logging.error('--> fetch_handler() --> fetch_events(): Exception occurred: \"%s\". Try again in %s seconds' % (e, fetch_events_interval))
 
-            # slow down requests to prevent overloading the Envoy
-            time.sleep(1)
-
-        except Exception as e:
-            if fetch_production_historic_interval > 60:
-                sleep = fetch_production_historic_interval
-            else:
-                sleep = 60
-
-            logging.warning('--> fetch_handler(): Exception occurred: \"%s\". Try again in %s seconds' % (e, sleep))
-            time.sleep(sleep)
-
+        # slow down requests to prevent overloading the Envoy
+        time.sleep(1)
 
 
 def publish_mqtt_data():
