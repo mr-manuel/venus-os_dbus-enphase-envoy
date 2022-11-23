@@ -647,15 +647,15 @@ class DbusEnphaseEnvoyPvService:
             logging.info('--> DbusEnphaseEnvoyPvService->_update(): got exit signal')
             sys.exit()
 
-        self._dbusservice['/Ac/Power'] =  round(pv_power, 2)
+        self._dbusservice['/Ac/Power'] =  round(pv_power*-1000, 2)
         self._dbusservice['/Ac/Current'] = round(pv_current, 2)
         self._dbusservice['/Ac/Voltage'] = round(pv_voltage, 2)
-        #self._dbusservice['/Ac/Energy/Forward'] = round(pv_forward/1000, 2)
+        #self._dbusservice['/Ac/Energy/Forward'] = round(pv_forward*-1000, 2)
 
-        self._dbusservice['/Ac/L1/Power'] = round(pv_L1_power, 2)
+        self._dbusservice['/Ac/L1/Power'] = round(pv_power*-1000, 2)
         self._dbusservice['/Ac/L1/Current'] = round(pv_L1_current, 2)
         self._dbusservice['/Ac/L1/Voltage'] = round(pv_L1_voltage, 2)
-        #self._dbusservice['/Ac/L1/Energy/Forward'] = round(pv_L1_forward/1000, 2)
+        #self._dbusservice['/Ac/L1/Energy/Forward'] = round(pv_L1_forward*-1000, 2)
 
         #self._dbusservice['/StatusCode'] = 7
 
