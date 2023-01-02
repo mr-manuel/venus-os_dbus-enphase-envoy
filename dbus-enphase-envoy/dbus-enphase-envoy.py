@@ -47,6 +47,12 @@ if 'ENVOY' in config and 'fetch_production_historic_interval' in config['ENVOY']
 else:
     fetch_production_historic_interval = 900
 
+# check if fetch_production_historic_interval is enabled in config and not under minimum value
+if 'PV' in config and 'inverter_count' in config['PV'] and 'inverter_type' in config['PV']:
+    hardware = config['PV']['inverter_count'] + 'x ' + config['PV']['inverter_type']
+else:
+    hardware = 'Microinverters'
+
 # check if fetch_devices is enabled in config
 if 'DATA' in config and 'fetch_devices' in config['DATA'] and config['DATA']['fetch_devices'] == '1':
     fetch_devices_enabled = 1
@@ -170,7 +176,7 @@ def on_publish(client, userdata, rc):
 def fetch_meter_stream():
     logging.debug("step: fetch_meter_stream")
 
-    global config, data_meter_stream, data_production_historic, keep_running, pv_power, pv_current, pv_voltage, pv_L1_power, pv_L1_current, pv_L1_voltage, pv_L2_power, pv_L2_current, pv_L2_voltage, pv_L3_power, pv_L3_current, pv_L3_voltage, replace_phases
+    global config, data_meter_stream, data_production_historic, keep_running, pv_power, pv_current, pv_voltage, pv_forward, pv_L1_power, pv_L1_current, pv_L1_voltage, pv_L1_forward, pv_L2_power, pv_L2_current, pv_L2_voltage, pv_L2_forward, pv_L3_power, pv_L3_current, pv_L3_voltage, pv_L3_forward, replace_phases
 
     marker = b'data: '
 
@@ -209,6 +215,7 @@ def fetch_meter_stream():
                         total_voltage         = 0
                         total_power_react     = 0
                         total_power_appearent = 0
+                        total_forward         = 0
 
                         for phase in ['ph-a', 'ph-b', 'ph-c']:
 
@@ -221,6 +228,7 @@ def fetch_meter_stream():
                                 total_voltage         += float(data[meter][phase]['v'])
                                 total_power_react     += float(data[meter][phase]['q'])
                                 total_power_appearent += float(data[meter][phase]['s'])
+                                total_forward         += float(data_production_historic[meter_name][phase_name]['whLifetime']/1000)
 
                                 jsonpayload.update({
                                     phase_name: {
@@ -235,6 +243,7 @@ def fetch_meter_stream():
                                         'vahToday': data_production_historic[meter_name][phase_name]['vahToday'],
                                         'whLifetime': data_production_historic[meter_name][phase_name]['whLifetime'],
                                         'vahLifetime': data_production_historic[meter_name][phase_name]['vahLifetime'],
+                                        'energy_forward': round(data_production_historic[meter_name][phase_name]['whLifetime']/1000, 3),
                                     }
                                 })
 
@@ -242,6 +251,7 @@ def fetch_meter_stream():
                                     pvVars.__setitem__('pv_' + phase_name + '_power', float(data[meter][phase]['p']))
                                     pvVars.__setitem__('pv_' + phase_name + '_current', float(data[meter][phase]['i']))
                                     pvVars.__setitem__('pv_' + phase_name + '_voltage', float(data[meter][phase]['v']))
+                                    pvVars.__setitem__('pv_' + phase_name + '_forward', float(round(data_production_historic[meter_name][phase_name]['whLifetime']/1000, 3)))
 
 
                         jsonpayload.update({
@@ -254,12 +264,14 @@ def fetch_meter_stream():
                             'vahToday': data_production_historic[meter_name]['vahToday'],
                             'whLifetime': data_production_historic[meter_name]['whLifetime'],
                             'vahLifetime': data_production_historic[meter_name]['vahLifetime'],
+                            'energy_forward': round(data_production_historic[meter_name]['whLifetime']/1000, 3),
                         })
 
                         if meter == 'production':
                             pv_power = total_power
                             pv_current = total_current
                             pv_voltage = total_voltage
+                            pv_forward = round(total_forward, 3)
 
                         total_jsonpayload.update({meter_name: jsonpayload})
 
@@ -605,7 +617,8 @@ class DbusEnphaseEnvoyPvService:
         deviceinstance,
         paths,
         productname='Enphase PV',
-        connection='Enphase PV service'
+        connection='Enphase PV service',
+        hardware='Microinverters'
     ):
 
         global config
@@ -622,16 +635,19 @@ class DbusEnphaseEnvoyPvService:
 
         # Create the mandatory objects
         self._dbusservice.add_path('/DeviceInstance', deviceinstance)
-        self._dbusservice.add_path('/ProductId', 0xFFFF) # value used in ac_sensor_bridge.cpp of dbus-cgwacs
+        # 0xFFFF Default
+        # 0xA142 Fronius Symo 8.2-3-M
+        self._dbusservice.add_path('/ProductId', 0xFFFF)
         self._dbusservice.add_path('/ProductName', productname)
         self._dbusservice.add_path('/CustomName', productname)
-        self._dbusservice.add_path('/FirmwareVersion', 0.1)
-        self._dbusservice.add_path('/HardwareVersion', 0)
+        self._dbusservice.add_path('/FirmwareVersion', 0.0.2)
+        self._dbusservice.add_path('/HardwareVersion', hardware)
         self._dbusservice.add_path('/Connected', 1)
 
         self._dbusservice.add_path('/Latency', None)
-        self._dbusservice.add_path('/Position', int(config['PV']['position'])) # normaly only needed for pvinverter
-        self._dbusservice.add_path('/StatusCode', 0)  # Dummy path so VRM detects us as a PV-inverter.
+        self._dbusservice.add_path('/ErrorCode', 0)
+        self._dbusservice.add_path('/Position', int(config['PV']['position'])) # only needed for pvinverter
+        self._dbusservice.add_path('/StatusCode', 0)  # Dummy path so VRM detects us as a PV-inverter
 
         for path, settings in self._paths.items():
             self._dbusservice.add_path(
@@ -650,26 +666,27 @@ class DbusEnphaseEnvoyPvService:
         self._dbusservice['/Ac/Power'] =  round(pv_power, 2)
         self._dbusservice['/Ac/Current'] = round(pv_current, 2)
         self._dbusservice['/Ac/Voltage'] = round(pv_voltage, 2)
-        #self._dbusservice['/Ac/Energy/Forward'] = round(pv_forward/1000, 2)
+        self._dbusservice['/Ac/Energy/Forward'] = round(pv_forward, 2)   # needed for VRM historical data
 
         self._dbusservice['/Ac/L1/Power'] = round(pv_L1_power, 2)
         self._dbusservice['/Ac/L1/Current'] = round(pv_L1_current, 2)
         self._dbusservice['/Ac/L1/Voltage'] = round(pv_L1_voltage, 2)
-        #self._dbusservice['/Ac/L1/Energy/Forward'] = round(pv_L1_forward/1000, 2)
+        self._dbusservice['/Ac/L1/Energy/Forward'] = round(pv_L1_forward, 2)   # needed for VRM historical data
 
-        #self._dbusservice['/StatusCode'] = 7
+        self._dbusservice['/ErrorCode'] = 0
+        self._dbusservice['/StatusCode'] = 7
 
         if pv_L2_power > 0:
             self._dbusservice['/Ac/L2/Power'] = round(pv_L2_power, 2)
             self._dbusservice['/Ac/L2/Current'] = round(pv_L2_current, 2)
             self._dbusservice['/Ac/L2/Voltage'] = round(pv_L2_voltage, 2)
-            #self._dbusservice['/Ac/L2/Energy/Forward'] = round(pv_L2_forward/1000, 2)
+            self._dbusservice['/Ac/L2/Energy/Forward'] = round(pv_L2_forward, 2)   # needed for VRM historical data
 
         if pv_L3_power > 0:
             self._dbusservice['/Ac/L3/Power'] = round(pv_L3_power, 2)
             self._dbusservice['/Ac/L3/Current'] = round(pv_L3_current, 2)
             self._dbusservice['/Ac/L3/Voltage'] = round(pv_L3_voltage, 2)
-            #self._dbusservice['/Ac/L3/Energy/Forward'] = round(pv_L3_forward/1000, 2)
+            self._dbusservice['/Ac/L3/Energy/Forward'] = round(pv_L3_forward, 2)   # needed for VRM historical data
 
         logging.info("PV: {:.1f} W - {:.1f} V - {:.1f} A".format(pv_power, pv_voltage, pv_current))
         if pv_L1_power > 0 and pv_power != pv_L1_power:
@@ -785,10 +802,12 @@ def main():
         '/Ac/Power': {'initial': 0, 'textformat': _w},
         '/Ac/Current': {'initial': 0, 'textformat': _a},
         '/Ac/Voltage': {'initial': 0, 'textformat': _v},
+        '/Ac/Energy/Forward': {'initial': 0, 'textformat': _kwh},
 
         '/Ac/L1/Power': {'initial': 0, 'textformat': _w},
         '/Ac/L1/Current': {'initial': 0, 'textformat': _a},
         '/Ac/L1/Voltage': {'initial': 0, 'textformat': _v},
+        '/Ac/L1/Energy/Forward': {'initial': 0, 'textformat': _kwh},
 
         '/Ac/MaxPower': {'initial': int(config['PV']['max']), 'textformat': _w},
         '/Ac/Position': {'initial': int(config['PV']['position']), 'textformat': _n},
@@ -801,6 +820,7 @@ def main():
             '/Ac/L2/Power': {'initial': 0, 'textformat': _w},
             '/Ac/L2/Current': {'initial': 0, 'textformat': _a},
             '/Ac/L2/Voltage': {'initial': 0, 'textformat': _v},
+            '/Ac/L2/Energy/Forward': {'initial': 0, 'textformat': _kwh},
         })
 
     if pv_L3_power > 0:
@@ -808,13 +828,15 @@ def main():
             '/Ac/L3/Power': {'initial': 0, 'textformat': _w},
             '/Ac/L3/Current': {'initial': 0, 'textformat': _a},
             '/Ac/L3/Voltage': {'initial': 0, 'textformat': _v},
+            '/Ac/L3/Energy/Forward': {'initial': 0, 'textformat': _kwh},
         })
 
 
     pvac_output = DbusEnphaseEnvoyPvService(
         servicename='com.victronenergy.pvinverter.enphase_envoy',
         deviceinstance=61,
-        paths=paths_dbus
+        paths=paths_dbus,
+        hardware=hardware
     )
 
     logging.info('Connected to dbus and switching over to GLib.MainLoop() (= event based)')
