@@ -5,6 +5,8 @@ import platform
 import logging
 import sys
 import os
+import os.path
+from os import path
 import time
 import json
 import paho.mqtt.client as mqtt
@@ -136,6 +138,22 @@ pv_L3_current = 0
 pv_L3_voltage = 0
 pv_L3_forward = 0
 
+grid_power = 0
+grid_energy_forward = 0
+grid_energy_reverse = 0
+
+grid_L1_power = 0
+grid_L1_energy_forward = 0
+grid_L1_energy_reverse = 0
+
+grid_L2_power = 0
+grid_L2_energy_forward = 0
+grid_L2_energy_reverse = 0
+
+grid_L3_power = 0
+grid_L3_energy_forward = 0
+grid_L3_energy_reverse = 0
+
 data_meter_stream = {}
 data_production_historic = {}
 data_devices = {}
@@ -176,9 +194,43 @@ def on_publish(client, userdata, rc):
 def fetch_meter_stream():
     logging.debug("step: fetch_meter_stream")
 
-    global config, data_meter_stream, data_production_historic, keep_running, pv_power, pv_current, pv_voltage, pv_forward, pv_L1_power, pv_L1_current, pv_L1_voltage, pv_L1_forward, pv_L2_power, pv_L2_current, pv_L2_voltage, pv_L2_forward, pv_L3_power, pv_L3_current, pv_L3_voltage, pv_L3_forward, replace_phases
+    global config, active_phases, \
+        data_meter_stream, data_production_historic, \
+        grid_power,    grid_energy_forward, grid_energy_reverse, \
+        grid_L1_power, grid_L1_energy_forward, grid_L1_energy_reverse, \
+        grid_L2_power, grid_L2_energy_forward, grid_L2_energy_reverse, \
+        grid_L3_power, grid_L3_energy_forward, grid_L3_energy_reverse, \
+        keep_running, \
+        pv_power,    pv_current,    pv_voltage,    pv_forward, pv_energy_forward, \
+        pv_L1_power, pv_L1_current, pv_L1_voltage, pv_L1_forward, pv_L1_energy_forward, \
+        pv_L2_power, pv_L2_current, pv_L2_voltage, pv_L2_forward, pv_L2_energy_forward, \
+        pv_L3_power, pv_L3_current, pv_L3_voltage, pv_L3_forward, pv_L3_energy_forward
 
     marker = b'data: '
+
+    # create dictionary for later to count watt hours
+    data_watt_hours = {
+        'time_creation': round(time.time(), 0),
+        'pv': {
+            'energy_forward': 0,
+        },
+        'grid': {
+            'energy_forward': 0,
+            'energy_reverse': 0
+        },
+        'count': 0
+    }
+    # calculate and save watthours after every x seconds
+    data_watt_hours_timespan = 60
+    # save file to non volatile storage after x seconds
+    data_watt_hours_save = 900
+    # file to save watt hours on persistent storage
+    data_watt_hours_storage_file = '/data/etc/dbus-enphase-envoy/data_watt_hours.json'
+    # file to save many writing operations (best on ramdisk to not wear SD card)
+    data_watt_hours_working_file = '/var/volatile/tmp/dbus-enphase-envoy_data_watt_hours.json'
+    # get last modification timestamp
+    timestamp_storage_file = os.path.getmtime(data_watt_hours_storage_file) if path.isfile(data_watt_hours_storage_file) else 0
+    print(timestamp_storage_file)
 
     while 1:
 
@@ -201,6 +253,8 @@ def fetch_meter_stream():
                 if line.startswith(marker):
                     data = json.loads(line.replace(marker, b''))
 
+                    # set timestamp when line is read
+                    timestamp = round(time.time(), 0)
                     total_jsonpayload = {}
                     pvVars = globals()
 
@@ -215,7 +269,8 @@ def fetch_meter_stream():
                         total_voltage         = 0
                         total_power_react     = 0
                         total_power_appearent = 0
-                        total_forward         = 0
+                        total_energy_forward  = 0
+                        total_energy_reverse  = 0
 
                         for phase in ['ph-a', 'ph-b', 'ph-c']:
 
@@ -228,31 +283,41 @@ def fetch_meter_stream():
                                 total_voltage         += float(data[meter][phase]['v'])
                                 total_power_react     += float(data[meter][phase]['q'])
                                 total_power_appearent += float(data[meter][phase]['s'])
-                                total_forward         += float(data_production_historic[meter_name][phase_name]['whLifetime']/1000)
+                                total_energy_forward  += float(data_production_historic[meter_name][phase_name]['whLifetime']/1000)
 
-                                jsonpayload.update({
-                                    phase_name: {
-                                        'power': float(data[meter][phase]['p']),
-                                        'current': float(data[meter][phase]['i']),
-                                        'voltage': float(data[meter][phase]['v']),
-                                        'power_react': float(data[meter][phase]['q']),
-                                        'power_appearent': float(data[meter][phase]['s']),
-                                        'power_factor': float(data[meter][phase]['pf']),
-                                        'frequency': float(data[meter][phase]['f']),
-                                        'whToday': data_production_historic[meter_name][phase_name]['whToday'],
-                                        'vahToday': data_production_historic[meter_name][phase_name]['vahToday'],
-                                        'whLifetime': data_production_historic[meter_name][phase_name]['whLifetime'],
-                                        'vahLifetime': data_production_historic[meter_name][phase_name]['vahLifetime'],
+                                phase_data = {
+                                    'power': float(data[meter][phase]['p']),
+                                    'current': float(data[meter][phase]['i']),
+                                    'voltage': float(data[meter][phase]['v']),
+                                    'power_react': float(data[meter][phase]['q']),
+                                    'power_appearent': float(data[meter][phase]['s']),
+                                    'power_factor': float(data[meter][phase]['pf']),
+                                    'frequency': float(data[meter][phase]['f']),
+                                    'whToday': data_production_historic[meter_name][phase_name]['whToday'],
+                                    'vahToday': data_production_historic[meter_name][phase_name]['vahToday'],
+                                    'whLifetime': data_production_historic[meter_name][phase_name]['whLifetime'],
+                                    'vahLifetime': data_production_historic[meter_name][phase_name]['vahLifetime'],
+                                }
+
+                                if meter_name == 'pv':
+                                    phase_data.update({
                                         'energy_forward': round(data_production_historic[meter_name][phase_name]['whLifetime']/1000, 3),
-                                    }
-                                })
-
-                                if meter == 'production':
+                                    })
                                     pvVars.__setitem__('pv_' + phase_name + '_power', float(data[meter][phase]['p']))
                                     pvVars.__setitem__('pv_' + phase_name + '_current', float(data[meter][phase]['i']))
                                     pvVars.__setitem__('pv_' + phase_name + '_voltage', float(data[meter][phase]['v']))
                                     pvVars.__setitem__('pv_' + phase_name + '_forward', float(round(data_production_historic[meter_name][phase_name]['whLifetime']/1000, 3)))
 
+                                if meter_name == 'grid':
+                                    phase_data.update({
+                                        'energy_forward': round(data_production_historic[meter_name][phase_name]['whLifetime']/1000, 3),
+                                        #'energy_reverse': round(data_production_historic[meter_name][phase_name]['whLifetime']/1000, 3),
+                                    })
+                                    pvVars.__setitem__('grid_' + phase_name + '_power', float(data[meter][phase]['p']))
+
+                                jsonpayload.update({
+                                    phase_name: phase_data
+                                })
 
                         jsonpayload.update({
                             'power': total_power,
@@ -264,19 +329,133 @@ def fetch_meter_stream():
                             'vahToday': data_production_historic[meter_name]['vahToday'],
                             'whLifetime': data_production_historic[meter_name]['whLifetime'],
                             'vahLifetime': data_production_historic[meter_name]['vahLifetime'],
-                            'energy_forward': round(data_production_historic[meter_name]['whLifetime']/1000, 3),
                         })
 
-                        if meter == 'production':
+                        if meter_name == 'pv':
                             pv_power = total_power
                             pv_current = total_current
                             pv_voltage = total_voltage
-                            pv_forward = round(total_forward, 3)
+                            pv_forward = round(total_energy_forward, 3)
+
+                            jsonpayload.update({
+                                'energy_forward': round(data_production_historic[meter_name]['whLifetime']/1000, 3),
+                            })
+
+                        if meter_name == 'grid':
+                            grid_power = total_power
+
+                            jsonpayload.update({
+                                'energy_forward': round(data_production_historic[meter_name]['whLifetime']/1000, 3),
+                                #'energy_reverse': round(data_production_historic[meter_name]['whLifetime']/1000, 3),
+                            })
 
                         total_jsonpayload.update({meter_name: jsonpayload})
 
                     # make fetched data globally available
                     data_meter_stream = total_jsonpayload
+
+
+                    # measure power and calculate watthours, since enphase provides only watthours for production/import/consumption and no export
+                    # divide import and export from grid
+                    grid_power_forward = grid_power if grid_power > 0 else 0
+                    grid_power_reverse = grid_power * -1 if grid_power < 0 else 0
+
+                    #grid_L1_power_forward = grid_L1_power if grid_L1_power > 0 else 0
+                    #grid_L1_power_reverse = grid_L1_power * -1 if grid_L1_power < 0 else 0
+
+                    #if 'L2' in total_jsonpayload['grid']:
+                    #    grid_L2_power_forward = grid_L2_power if grid_L2_power > 0 else 0
+                    #    grid_L2_power_reverse = grid_L2_power * -1 if grid_L2_power < 0 else 0
+
+                    #if 'L3' in total_jsonpayload['grid']:
+                    #    grid_L3_power_forward = grid_L3_power if grid_L3_power > 0 else 0
+                    #    grid_L3_power_reverse = grid_L3_power * -1 if grid_L3_power < 0 else 0
+
+                    # check if x seconds are passed, if not sum values for calculation
+                    if data_watt_hours['time_creation'] + data_watt_hours_timespan > timestamp:
+                        data_watt_hours.update({
+                            'pv': {
+                                'energy_forward': round(data_watt_hours['pv']['energy_forward'] + pv_power, 3),
+                            },
+                            'grid': {
+                                'energy_forward': round(data_watt_hours['grid']['energy_forward'] + grid_power_forward, 3),
+                                'energy_reverse': round(data_watt_hours['grid']['energy_reverse'] + grid_power_reverse, 3)
+                            },
+                            'count': data_watt_hours['count'] + 1
+
+                        })
+                        logging.error('--> data_watt_hours(): %s' % json.dumps(data_watt_hours))
+
+                    # build mean, calculate time diff and Wh and write to file
+                    else:
+                        # check if file in volatile storage exists
+                        if path.isfile(data_watt_hours_working_file):
+                            with open(data_watt_hours_working_file, 'r') as file:
+                                file = open(data_watt_hours_working_file, "r")
+                                data_watt_hours_old = json.load(file)
+                                logging.error('Loaded JSON: %s' % json.dumps(data_watt_hours_old))
+
+                        # if not, check if file in persistent storage exists
+                        elif path.isfile(data_watt_hours_storage_file):
+                            with open(data_watt_hours_storage_file, 'r') as file:
+                                file = open(data_watt_hours_storage_file, "r")
+                                data_watt_hours_old = json.load(file)
+                                logging.error('Loaded JSON from persistent storage: %s' % json.dumps(data_watt_hours_old))
+
+                        # if not, generate data
+                        else:
+                            data_watt_hours_old = {
+                                'pv': {
+                                    'energy_forward': 0,
+                                },
+                                'grid': {
+                                    'energy_forward': 0,
+                                    'energy_reverse': 0
+                                }
+                            }
+                            logging.error('Generated JSON: %s' % json.dumps(data_watt_hours_old))
+
+                        # factor to calculate Watthours: mean power * measuuring period / 3600 seconds (1 hour)
+                        factor = (timestamp - data_watt_hours['time_creation']) / 3600
+
+                        pv_energy_forward   = data_watt_hours_old['pv']['energy_forward'] + (data_watt_hours['pv']['energy_forward'] / data_watt_hours['count'] * factor)
+                        grid_energy_forward = data_watt_hours_old['grid']['energy_forward'] + (data_watt_hours['grid']['energy_forward'] / data_watt_hours['count'] * factor)
+                        grid_energy_reverse = data_watt_hours_old['grid']['energy_reverse'] + (data_watt_hours['grid']['energy_reverse'] / data_watt_hours['count'] * factor)
+
+                        json_data = {
+                            'pv': {
+                                'energy_forward': pv_energy_forward,
+                            },
+                            'grid': {
+                                'energy_forward': grid_energy_forward,
+                                'energy_reverse': grid_energy_reverse
+                            }
+                        }
+
+                        # save data to volatile storage
+                        with open(data_watt_hours_working_file, 'w') as file:
+                            file.write(json.dumps(json_data))
+
+                        # save data to persistent storage if time is passed
+                        if timestamp_storage_file + data_watt_hours_save > timestamp:
+                            with open(data_watt_hours_storage_file, 'w') as file:
+                                file.write(json.dumps(json_data))
+                            timestamp_storage_file = timestamp
+
+                        # begin a new cycle
+                        data_watt_hours = {
+                            'time_creation': timestamp,
+                            'pv': {
+                                'energy_forward': round(pv_power, 3),
+                            },
+                            'grid': {
+                                'energy_forward': round(grid_power_forward, 3),
+                                'energy_reverse': round(grid_power_reverse, 3)
+                            },
+                            'count': 1
+
+                        }
+                        logging.error('--> data_watt_hours(): %s' % json.dumps(data_watt_hours))
 
         except requests.exceptions.RequestException as e:
             logging.error('--> fetch_meter_stream(): RequestException occurred: \"%s\"' % e)
@@ -640,7 +819,7 @@ class DbusEnphaseEnvoyPvService:
         self._dbusservice.add_path('/ProductId', 0xFFFF)
         self._dbusservice.add_path('/ProductName', productname)
         self._dbusservice.add_path('/CustomName', productname)
-        self._dbusservice.add_path('/FirmwareVersion', 0.0.2)
+        self._dbusservice.add_path('/FirmwareVersion', '0.0.2')
         self._dbusservice.add_path('/HardwareVersion', hardware)
         self._dbusservice.add_path('/Connected', 1)
 
@@ -752,7 +931,6 @@ def main():
             port=int(config['MQTT']['broker_port'])
         )
         client.loop_start()
-
 
 
     ## Enphase Envoy-S
