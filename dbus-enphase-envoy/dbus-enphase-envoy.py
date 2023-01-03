@@ -5,7 +5,6 @@ import platform
 import logging
 import sys
 import os
-import os.path
 from os import path
 import time
 import json
@@ -196,7 +195,7 @@ def fetch_meter_stream():
 
     global config, active_phases, \
         data_meter_stream, data_production_historic, \
-        grid_power,    grid_energy_forward, grid_energy_reverse, \
+        grid_power,    grid_energy_forward,    grid_energy_reverse, \
         grid_L1_power, grid_L1_energy_forward, grid_L1_energy_reverse, \
         grid_L2_power, grid_L2_energy_forward, grid_L2_energy_reverse, \
         grid_L3_power, grid_L3_energy_forward, grid_L3_energy_reverse, \
@@ -211,13 +210,6 @@ def fetch_meter_stream():
     # create dictionary for later to count watt hours
     data_watt_hours = {
         'time_creation': round(time.time(), 0),
-        'pv': {
-            'energy_forward': 0,
-        },
-        'grid': {
-            'energy_forward': 0,
-            'energy_reverse': 0
-        },
         'count': 0
     }
     # calculate and save watthours after every x seconds
@@ -230,7 +222,6 @@ def fetch_meter_stream():
     data_watt_hours_working_file = '/var/volatile/tmp/dbus-enphase-envoy_data_watt_hours.json'
     # get last modification timestamp
     timestamp_storage_file = os.path.getmtime(data_watt_hours_storage_file) if path.isfile(data_watt_hours_storage_file) else 0
-    print(timestamp_storage_file)
 
     while 1:
 
@@ -256,7 +247,6 @@ def fetch_meter_stream():
                     # set timestamp when line is read
                     timestamp = round(time.time(), 0)
                     total_jsonpayload = {}
-                    pvVars = globals()
 
                     for meter in ['production', 'net-consumption', 'total-consumption']:
 
@@ -301,19 +291,24 @@ def fetch_meter_stream():
 
                                 if meter_name == 'pv':
                                     phase_data.update({
-                                        'energy_forward': round(data_production_historic[meter_name][phase_name]['whLifetime']/1000, 3),
+                                        'energy_forward': float(round(data_production_historic[meter_name][phase_name]['whLifetime']/1000, 3)),
                                     })
-                                    pvVars.__setitem__('pv_' + phase_name + '_power', float(data[meter][phase]['p']))
-                                    pvVars.__setitem__('pv_' + phase_name + '_current', float(data[meter][phase]['i']))
-                                    pvVars.__setitem__('pv_' + phase_name + '_voltage', float(data[meter][phase]['v']))
-                                    pvVars.__setitem__('pv_' + phase_name + '_forward', float(round(data_production_historic[meter_name][phase_name]['whLifetime']/1000, 3)))
+                                    globals()['pv_' + phase_name + '_power'] = float(data[meter][phase]['p'])
+                                    globals()['pv_' + phase_name + '_current'] = float(data[meter][phase]['i'])
+                                    globals()['pv_' + phase_name + '_voltage'] = float(data[meter][phase]['v'])
+                                    globals()['pv_' + phase_name + '_forward'] = float(round(data_production_historic[meter_name][phase_name]['whLifetime']/1000, 3))
 
                                 if meter_name == 'grid':
                                     phase_data.update({
-                                        'energy_forward': round(data_production_historic[meter_name][phase_name]['whLifetime']/1000, 3),
-                                        #'energy_reverse': round(data_production_historic[meter_name][phase_name]['whLifetime']/1000, 3),
+                                        'energy_forward': globals()['grid_' + phase_name + '_energy_forward'],
+                                        'energy_reverse': globals()['grid_' + phase_name + '_energy_reverse'],
                                     })
-                                    pvVars.__setitem__('grid_' + phase_name + '_power', float(data[meter][phase]['p']))
+                                    globals()['grid_' + phase_name + '_power'] = float(data[meter][phase]['p'])
+
+                                if meter_name == 'consumption':
+                                    phase_data.update({
+                                        'energy_forward': float(round(data_production_historic[meter_name][phase_name]['whLifetime']/1000, 3)),
+                                    })
 
                                 jsonpayload.update({
                                     phase_name: phase_data
@@ -345,46 +340,76 @@ def fetch_meter_stream():
                             grid_power = total_power
 
                             jsonpayload.update({
+                                'energy_forward': grid_energy_forward,
+                                'energy_reverse': grid_energy_reverse,
+                            })
+
+                        if meter_name == 'consumption':
+                            jsonpayload.update({
                                 'energy_forward': round(data_production_historic[meter_name]['whLifetime']/1000, 3),
-                                #'energy_reverse': round(data_production_historic[meter_name]['whLifetime']/1000, 3),
                             })
 
                         total_jsonpayload.update({meter_name: jsonpayload})
 
-                    # make fetched data globally available
-                    data_meter_stream = total_jsonpayload
 
-
+                    ### calculate watthours
                     # measure power and calculate watthours, since enphase provides only watthours for production/import/consumption and no export
                     # divide import and export from grid
-                    grid_power_forward = grid_power if grid_power > 0 else 0
-                    grid_power_reverse = grid_power * -1 if grid_power < 0 else 0
+                    grid_power_forward = total_jsonpayload['grid']['power'] if total_jsonpayload['grid']['power'] > 0 else 0
+                    grid_power_reverse = total_jsonpayload['grid']['power'] * -1 if total_jsonpayload['grid']['power'] < 0 else 0
 
-                    #grid_L1_power_forward = grid_L1_power if grid_L1_power > 0 else 0
-                    #grid_L1_power_reverse = grid_L1_power * -1 if grid_L1_power < 0 else 0
+                    if 'L1' in total_jsonpayload['grid']:
+                        grid_L1_power_forward = total_jsonpayload['grid']['L1']['power'] if total_jsonpayload['grid']['L1']['power'] > 0 else 0
+                        grid_L1_power_reverse = total_jsonpayload['grid']['L1']['power'] * -1 if total_jsonpayload['grid']['L1']['power'] < 0 else 0
 
-                    #if 'L2' in total_jsonpayload['grid']:
-                    #    grid_L2_power_forward = grid_L2_power if grid_L2_power > 0 else 0
-                    #    grid_L2_power_reverse = grid_L2_power * -1 if grid_L2_power < 0 else 0
+                    if 'L2' in total_jsonpayload['grid']:
+                        grid_L2_power_forward = total_jsonpayload['grid']['L2']['power'] if total_jsonpayload['grid']['L2']['power'] > 0 else 0
+                        grid_L2_power_reverse = total_jsonpayload['grid']['L2']['power'] * -1 if total_jsonpayload['grid']['L2']['power'] < 0 else 0
 
-                    #if 'L3' in total_jsonpayload['grid']:
-                    #    grid_L3_power_forward = grid_L3_power if grid_L3_power > 0 else 0
-                    #    grid_L3_power_reverse = grid_L3_power * -1 if grid_L3_power < 0 else 0
+                    if 'L3' in total_jsonpayload['grid']:
+                        grid_L3_power_forward = total_jsonpayload['grid']['L3']['power'] if total_jsonpayload['grid']['L3']['power'] > 0 else 0
+                        grid_L3_power_reverse = total_jsonpayload['grid']['L3']['power'] * -1 if total_jsonpayload['grid']['L3']['power'] < 0 else 0
 
                     # check if x seconds are passed, if not sum values for calculation
                     if data_watt_hours['time_creation'] + data_watt_hours_timespan > timestamp:
+
+                        data_watt_hours_grid = {
+                            'energy_forward': round(data_watt_hours['grid']['energy_forward'] + grid_power_forward if 'grid' in data_watt_hours else grid_power_forward, 3),
+                            'energy_reverse': round(data_watt_hours['grid']['energy_reverse'] + grid_power_reverse if 'grid' in data_watt_hours else grid_power_reverse, 3),
+                        }
+                        if 'L1' in total_jsonpayload['grid']:
+                            data_watt_hours_grid.update({
+                                'L1': {
+                                    'energy_forward': round(data_watt_hours['grid']['L1']['energy_forward'] + grid_L1_power_forward if 'grid' in data_watt_hours and 'L1' in data_watt_hours['grid'] else grid_L1_power_forward, 3),
+                                    'energy_reverse': round(data_watt_hours['grid']['L1']['energy_reverse'] + grid_L1_power_reverse if 'grid' in data_watt_hours and 'L1' in data_watt_hours['grid'] else grid_L1_power_reverse, 3),
+                                }
+                            })
+                        if 'L2' in total_jsonpayload['grid']:
+                            data_watt_hours_grid.update({
+                                'L2': {
+                                    'energy_forward': round(data_watt_hours['grid']['L2']['energy_forward'] + grid_L2_power_forward if 'grid' in data_watt_hours and 'L2' in data_watt_hours['grid'] else grid_L2_power_forward, 3),
+                                    'energy_reverse': round(data_watt_hours['grid']['L2']['energy_reverse'] + grid_L2_power_reverse if 'grid' in data_watt_hours and 'L2' in data_watt_hours['grid'] else grid_L2_power_reverse, 3),
+                                }
+                            })
+                        if 'L3' in total_jsonpayload['grid']:
+                            data_watt_hours_grid.update({
+                                'L3': {
+                                    'energy_forward': round(data_watt_hours['grid']['L3']['energy_forward'] + grid_L3_power_forward if 'grid' in data_watt_hours and 'L3' in data_watt_hours['grid'] else grid_L3_power_forward, 3),
+                                    'energy_reverse': round(data_watt_hours['grid']['L3']['energy_reverse'] + grid_L3_power_reverse if 'grid' in data_watt_hours and 'L3' in data_watt_hours['grid'] else grid_L3_power_reverse, 3),
+                                }
+                            })
+
                         data_watt_hours.update({
-                            'pv': {
-                                'energy_forward': round(data_watt_hours['pv']['energy_forward'] + pv_power, 3),
-                            },
-                            'grid': {
-                                'energy_forward': round(data_watt_hours['grid']['energy_forward'] + grid_power_forward, 3),
-                                'energy_reverse': round(data_watt_hours['grid']['energy_reverse'] + grid_power_reverse, 3)
-                            },
-                            'count': data_watt_hours['count'] + 1
+                            ## if PV not needed it can be removed, yet to evaluate
+                            #'pv': {
+                            #    'energy_forward': round(data_watt_hours['pv']['energy_forward'] + pv_power, 3),
+                            #},
+                            'grid': data_watt_hours_grid,
+                            'count': data_watt_hours['count'] + 1,
 
                         })
-                        logging.error('--> data_watt_hours(): %s' % json.dumps(data_watt_hours))
+
+                        logging.info('--> data_watt_hours(): %s' % json.dumps(data_watt_hours))
 
                     # build mean, calculate time diff and Wh and write to file
                     else:
@@ -393,43 +418,144 @@ def fetch_meter_stream():
                             with open(data_watt_hours_working_file, 'r') as file:
                                 file = open(data_watt_hours_working_file, "r")
                                 data_watt_hours_old = json.load(file)
-                                logging.error('Loaded JSON: %s' % json.dumps(data_watt_hours_old))
+                                logging.info('Loaded JSON: %s' % json.dumps(data_watt_hours_old))
 
                         # if not, check if file in persistent storage exists
                         elif path.isfile(data_watt_hours_storage_file):
                             with open(data_watt_hours_storage_file, 'r') as file:
                                 file = open(data_watt_hours_storage_file, "r")
                                 data_watt_hours_old = json.load(file)
-                                logging.error('Loaded JSON from persistent storage: %s' % json.dumps(data_watt_hours_old))
+                                logging.info('Loaded JSON from persistent storage: %s' % json.dumps(data_watt_hours_old))
 
                         # if not, generate data
                         else:
-                            data_watt_hours_old = {
-                                'pv': {
-                                    'energy_forward': 0,
-                                },
-                                'grid': {
-                                    'energy_forward': 0,
-                                    'energy_reverse': 0
-                                }
+                            data_watt_hours_old_grid = {
+                                'energy_forward': 0,
+                                'energy_reverse': 0,
                             }
-                            logging.error('Generated JSON: %s' % json.dumps(data_watt_hours_old))
+                            if 'L1' in total_jsonpayload['grid']:
+                                data_watt_hours_old_grid.update({
+                                    'L1': {
+                                        'energy_forward': 0,
+                                        'energy_reverse': 0,
+                                    }
+                                })
+                            if 'L2' in total_jsonpayload['grid']:
+                                data_watt_hours_old_grid.update({
+                                    'L2': {
+                                        'energy_forward': 0,
+                                        'energy_reverse': 0,
+                                    }
+                                })
+                            if 'L3' in total_jsonpayload['grid']:
+                                data_watt_hours_old_grid.update({
+                                    'L3': {
+                                        'energy_forward': 0,
+                                        'energy_reverse': 0,
+                                    }
+                                })
+                            data_watt_hours_old = {
+                                ## if PV not needed it can be removed, yet to evaluate
+                                #'pv': {
+                                #    'energy_forward': 0,
+                                #},
+                                'grid': data_watt_hours_old_grid
+                            }
+                            logging.info('Generated JSON: %s' % json.dumps(data_watt_hours_old))
 
                         # factor to calculate Watthours: mean power * measuuring period / 3600 seconds (1 hour)
                         factor = (timestamp - data_watt_hours['time_creation']) / 3600
 
-                        pv_energy_forward   = data_watt_hours_old['pv']['energy_forward'] + (data_watt_hours['pv']['energy_forward'] / data_watt_hours['count'] * factor)
-                        grid_energy_forward = data_watt_hours_old['grid']['energy_forward'] + (data_watt_hours['grid']['energy_forward'] / data_watt_hours['count'] * factor)
-                        grid_energy_reverse = data_watt_hours_old['grid']['energy_reverse'] + (data_watt_hours['grid']['energy_reverse'] / data_watt_hours['count'] * factor)
+                        #pv_energy_forward   = data_watt_hours_old['pv']['energy_forward'] + (data_watt_hours['pv']['energy_forward'] / data_watt_hours['count'] * factor)
+                        grid_energy_forward = round(data_watt_hours_old['grid']['energy_forward'] + (data_watt_hours['grid']['energy_forward'] / data_watt_hours['count'] * factor)/1000, 3)
+                        grid_energy_reverse = round(data_watt_hours_old['grid']['energy_reverse'] + (data_watt_hours['grid']['energy_reverse'] / data_watt_hours['count'] * factor)/1000, 3)
+
+                        # update previously set dummy data
+                        total_jsonpayload['grid'].update({
+                            'energy_forward': grid_energy_forward,
+                            'energy_reverse': grid_energy_reverse,
+                        })
+                        # prepare for save data
+                        json_data_grid = {
+                            'energy_forward': grid_energy_forward,
+                            'energy_reverse': grid_energy_reverse,
+                        }
+
+                        ### L1
+                        if 'L1' in data_watt_hours_old['grid'] and 'L1' in data_watt_hours['grid']:
+                            grid_L1_energy_forward = round(data_watt_hours_old['grid']['L1']['energy_forward'] + (data_watt_hours['grid']['L1']['energy_forward'] / data_watt_hours['count'] * factor)/1000, 3)
+                            grid_L1_energy_reverse = round(data_watt_hours_old['grid']['L1']['energy_reverse'] + (data_watt_hours['grid']['L1']['energy_reverse'] / data_watt_hours['count'] * factor)/1000, 3)
+                        # in case phase count changed
+                        elif 'L1' in data_watt_hours['grid']:
+                            grid_L1_energy_forward = round((data_watt_hours['grid']['L1']['energy_forward'] / data_watt_hours['count'] * factor)/1000, 3)
+                            grid_L1_energy_reverse = round((data_watt_hours['grid']['L1']['energy_reverse'] / data_watt_hours['count'] * factor)/1000, 3)
+
+                        if 'L1' in data_watt_hours['grid']:
+                            # update previously set dummy data
+                            total_jsonpayload['grid']['L1'].update({
+                                'energy_forward': grid_L1_energy_forward,
+                                'energy_reverse': grid_L1_energy_reverse,
+                            })
+
+                            json_data_grid.update({
+                                'L1': {
+                                    'energy_forward': grid_L1_energy_forward,
+                                    'energy_reverse': grid_L1_energy_reverse,
+                                }
+                            })
+
+                        ### L2
+                        if 'L2' in data_watt_hours_old['grid'] and 'L2' in data_watt_hours['grid']:
+                            grid_L2_energy_forward = round(data_watt_hours_old['grid']['L2']['energy_forward'] + (data_watt_hours['grid']['L2']['energy_forward'] / data_watt_hours['count'] * factor)/1000, 3)
+                            grid_L2_energy_reverse = round(data_watt_hours_old['grid']['L2']['energy_reverse'] + (data_watt_hours['grid']['L2']['energy_reverse'] / data_watt_hours['count'] * factor)/1000, 3)
+                        # in case phase count changed
+                        elif 'L2' in data_watt_hours['grid']:
+                            grid_L2_energy_forward = round((data_watt_hours['grid']['L2']['energy_forward'] / data_watt_hours['count'] * factor)/1000, 3)
+                            grid_L2_energy_reverse = round((data_watt_hours['grid']['L2']['energy_reverse'] / data_watt_hours['count'] * factor)/1000, 3)
+
+                        if 'L2' in data_watt_hours['grid']:
+                            # update previously set dummy data
+                            total_jsonpayload['grid']['L2'].update({
+                                'energy_forward': grid_L2_energy_forward,
+                                'energy_reverse': grid_L2_energy_reverse,
+                            })
+
+                            json_data_grid.update({
+                                'L2': {
+                                    'energy_forward': grid_L2_energy_forward,
+                                    'energy_reverse': grid_L2_energy_reverse,
+                                }
+                            })
+
+                        ### L3
+                        if 'L3' in data_watt_hours_old['grid'] and 'L3' in data_watt_hours['grid']:
+                            grid_L3_energy_forward = round(data_watt_hours_old['grid']['L3']['energy_forward'] + (data_watt_hours['grid']['L3']['energy_forward'] / data_watt_hours['count'] * factor)/1000, 3)
+                            grid_L3_energy_reverse = round(data_watt_hours_old['grid']['L3']['energy_reverse'] + (data_watt_hours['grid']['L3']['energy_reverse'] / data_watt_hours['count'] * factor)/1000, 3)
+                        # in case phase count changed
+                        elif 'L3' in data_watt_hours['grid']:
+                            grid_L3_energy_forward = round((data_watt_hours['grid']['L3']['energy_forward'] / data_watt_hours['count'] * factor)/1000, 3)
+                            grid_L3_energy_reverse = round((data_watt_hours['grid']['L3']['energy_reverse'] / data_watt_hours['count'] * factor)/1000, 3)
+
+                        if 'L3' in data_watt_hours['grid']:
+                            # update previously set dummy data
+                            total_jsonpayload['grid']['L3'].update({
+                                'energy_forward': grid_L3_energy_forward,
+                                'energy_reverse': grid_L3_energy_reverse,
+                            })
+
+                            json_data_grid.update({
+                                'L3': {
+                                    'energy_forward': grid_L3_energy_forward,
+                                    'energy_reverse': grid_L3_energy_reverse,
+                                }
+                            })
 
                         json_data = {
-                            'pv': {
-                                'energy_forward': pv_energy_forward,
-                            },
-                            'grid': {
-                                'energy_forward': grid_energy_forward,
-                                'energy_reverse': grid_energy_reverse
-                            }
+                            ## if PV not needed it can be removed, yet to evaluate
+                            #'pv': {
+                            #    'energy_forward': pv_energy_forward,
+                            #},
+                            'grid': json_data_grid
                         }
 
                         # save data to volatile storage
@@ -437,25 +563,54 @@ def fetch_meter_stream():
                             file.write(json.dumps(json_data))
 
                         # save data to persistent storage if time is passed
-                        if timestamp_storage_file + data_watt_hours_save > timestamp:
+                        if timestamp_storage_file + data_watt_hours_save < timestamp:
                             with open(data_watt_hours_storage_file, 'w') as file:
                                 file.write(json.dumps(json_data))
                             timestamp_storage_file = timestamp
+                            logging.info('Written JSON to persistent storage.')
 
                         # begin a new cycle
+                        data_watt_hours_grid = {
+                            'energy_forward': round(grid_power_forward, 3),
+                            'energy_reverse': round(grid_power_reverse, 3),
+                        }
+                        if 'L1' in total_jsonpayload['grid']:
+                            data_watt_hours_grid.update({
+                                'L1': {
+                                    'energy_forward': round(grid_L1_power_forward, 3),
+                                    'energy_reverse': round(grid_L1_power_reverse, 3),
+                                }
+                            })
+                        if 'L2' in total_jsonpayload['grid']:
+                            data_watt_hours_grid.update({
+                                'L2': {
+                                    'energy_forward': round(grid_L2_power_forward, 3),
+                                    'energy_reverse': round(grid_L2_power_reverse, 3),
+                                }
+                            })
+                        if 'L3' in total_jsonpayload['grid']:
+                            data_watt_hours_grid.update({
+                                'L3': {
+                                    'energy_forward': round(grid_L3_power_forward, 3),
+                                    'energy_reverse': round(grid_L3_power_reverse, 3),
+                                }
+                            })
+
                         data_watt_hours = {
                             'time_creation': timestamp,
-                            'pv': {
-                                'energy_forward': round(pv_power, 3),
-                            },
-                            'grid': {
-                                'energy_forward': round(grid_power_forward, 3),
-                                'energy_reverse': round(grid_power_reverse, 3)
-                            },
+                            ## if PV not needed it can be removed, yet to evaluate
+                            #'pv': {
+                            #    'energy_forward': round(pv_power, 3),
+                            #},
+                            'grid': data_watt_hours_grid,
                             'count': 1
 
                         }
-                        logging.error('--> data_watt_hours(): %s' % json.dumps(data_watt_hours))
+
+                        logging.info('--> data_watt_hours(): %s' % json.dumps(data_watt_hours))
+
+                    # make fetched data globally available
+                    data_meter_stream = total_jsonpayload
 
         except requests.exceptions.RequestException as e:
             logging.error('--> fetch_meter_stream(): RequestException occurred: \"%s\"' % e)
@@ -855,13 +1010,13 @@ class DbusEnphaseEnvoyPvService:
         self._dbusservice['/ErrorCode'] = 0
         self._dbusservice['/StatusCode'] = 7
 
-        if pv_L2_power > 0:
+        if 'L2' in data_meter_stream['pv']:
             self._dbusservice['/Ac/L2/Power'] = round(pv_L2_power, 2)
             self._dbusservice['/Ac/L2/Current'] = round(pv_L2_current, 2)
             self._dbusservice['/Ac/L2/Voltage'] = round(pv_L2_voltage, 2)
             self._dbusservice['/Ac/L2/Energy/Forward'] = round(pv_L2_forward, 2)   # needed for VRM historical data
 
-        if pv_L3_power > 0:
+        if 'L3' in data_meter_stream['pv']:
             self._dbusservice['/Ac/L3/Power'] = round(pv_L3_power, 2)
             self._dbusservice['/Ac/L3/Current'] = round(pv_L3_current, 2)
             self._dbusservice['/Ac/L3/Voltage'] = round(pv_L3_voltage, 2)
@@ -870,9 +1025,9 @@ class DbusEnphaseEnvoyPvService:
         logging.info("PV: {:.1f} W - {:.1f} V - {:.1f} A".format(pv_power, pv_voltage, pv_current))
         if pv_L1_power > 0 and pv_power != pv_L1_power:
             logging.info("|- L1: {:.1f} W - {:.1f} V - {:.1f} A".format(pv_L1_power, pv_L1_voltage, pv_L1_current))
-        if pv_L2_power:
+        if 'L2' in data_meter_stream['pv']:
             logging.info("|- L2: {:.1f} W - {:.1f} V - {:.1f} A".format(pv_L2_power, pv_L2_voltage, pv_L2_current))
-        if pv_L3_power:
+        if 'L3' in data_meter_stream['pv']:
             logging.info("|- L3: {:.1f} W - {:.1f} V - {:.1f} A".format(pv_L3_power, pv_L3_voltage, pv_L3_current))
 
 
@@ -993,7 +1148,7 @@ def main():
         '/UpdateIndex': {'initial': 0, 'textformat': _n},
     }
 
-    if pv_L2_power > 0:
+    if 'L2' in data_meter_stream['pv']:
         paths_dbus.update({
             '/Ac/L2/Power': {'initial': 0, 'textformat': _w},
             '/Ac/L2/Current': {'initial': 0, 'textformat': _a},
@@ -1001,7 +1156,7 @@ def main():
             '/Ac/L2/Energy/Forward': {'initial': 0, 'textformat': _kwh},
         })
 
-    if pv_L3_power > 0:
+    if 'L3' in data_meter_stream['pv']:
         paths_dbus.update({
             '/Ac/L3/Power': {'initial': 0, 'textformat': _w},
             '/Ac/L3/Current': {'initial': 0, 'textformat': _a},
