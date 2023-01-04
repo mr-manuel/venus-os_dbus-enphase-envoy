@@ -193,7 +193,7 @@ def on_publish(client, userdata, rc):
 def fetch_meter_stream():
     logging.debug("step: fetch_meter_stream")
 
-    global config, active_phases, \
+    global config, \
         data_meter_stream, data_production_historic, \
         grid_power,    grid_energy_forward,    grid_energy_reverse, \
         grid_L1_power, grid_L1_energy_forward, grid_L1_energy_reverse, \
@@ -222,6 +222,22 @@ def fetch_meter_stream():
     data_watt_hours_working_file = '/var/volatile/tmp/dbus-enphase-envoy_data_watt_hours.json'
     # get last modification timestamp
     timestamp_storage_file = os.path.getmtime(data_watt_hours_storage_file) if path.isfile(data_watt_hours_storage_file) else 0
+
+    ## load data to prevent sending 0 watthours for grid before the first loop
+    # check if file in volatile storage exists
+    if path.isfile(data_watt_hours_working_file):
+        with open(data_watt_hours_working_file, 'r') as file:
+            file = open(data_watt_hours_working_file, "r")
+            json_data = json.load(file)
+            logging.info('Loaded JSON once: %s' % json.dumps(json_data))
+    # if not, check if file in persistent storage exists
+    elif path.isfile(data_watt_hours_storage_file):
+        with open(data_watt_hours_storage_file, 'r') as file:
+            file = open(data_watt_hours_storage_file, "r")
+            json_data = json.load(file)
+            logging.info('Loaded JSON once from persistent storage: %s' % json.dumps(json_data))
+    else:
+        json_data = {}
 
     while 1:
 
@@ -300,8 +316,8 @@ def fetch_meter_stream():
 
                                 if meter_name == 'grid':
                                     phase_data.update({
-                                        'energy_forward': globals()['grid_' + phase_name + '_energy_forward'],
-                                        'energy_reverse': globals()['grid_' + phase_name + '_energy_reverse'],
+                                        'energy_forward': json_data['grid'][phase_name]['energy_forward'] if 'grid' in json_data and phase_name in json_data['grid'] else 0,
+                                        'energy_reverse': json_data['grid'][phase_name]['energy_reverse'] if 'grid' in json_data and phase_name in json_data['grid'] else 0,
                                     })
                                     globals()['grid_' + phase_name + '_power'] = float(data[meter][phase]['p'])
 
@@ -340,8 +356,8 @@ def fetch_meter_stream():
                             grid_power = total_power
 
                             jsonpayload.update({
-                                'energy_forward': grid_energy_forward,
-                                'energy_reverse': grid_energy_reverse,
+                                'energy_forward': json_data['grid']['energy_forward'] if 'grid' in json_data else 0,
+                                'energy_reverse': json_data['grid']['energy_reverse'] if 'grid' in json_data else 0,
                             })
 
                         if meter_name == 'consumption':
@@ -470,7 +486,7 @@ def fetch_meter_stream():
                         grid_energy_forward = round(data_watt_hours_old['grid']['energy_forward'] + (data_watt_hours['grid']['energy_forward'] / data_watt_hours['count'] * factor)/1000, 3)
                         grid_energy_reverse = round(data_watt_hours_old['grid']['energy_reverse'] + (data_watt_hours['grid']['energy_reverse'] / data_watt_hours['count'] * factor)/1000, 3)
 
-                        # update previously set dummy data
+                        # update previously set data
                         total_jsonpayload['grid'].update({
                             'energy_forward': grid_energy_forward,
                             'energy_reverse': grid_energy_reverse,
@@ -491,7 +507,7 @@ def fetch_meter_stream():
                             grid_L1_energy_reverse = round((data_watt_hours['grid']['L1']['energy_reverse'] / data_watt_hours['count'] * factor)/1000, 3)
 
                         if 'L1' in data_watt_hours['grid']:
-                            # update previously set dummy data
+                            # update previously set data
                             total_jsonpayload['grid']['L1'].update({
                                 'energy_forward': grid_L1_energy_forward,
                                 'energy_reverse': grid_L1_energy_reverse,
@@ -514,7 +530,7 @@ def fetch_meter_stream():
                             grid_L2_energy_reverse = round((data_watt_hours['grid']['L2']['energy_reverse'] / data_watt_hours['count'] * factor)/1000, 3)
 
                         if 'L2' in data_watt_hours['grid']:
-                            # update previously set dummy data
+                            # update previously set data
                             total_jsonpayload['grid']['L2'].update({
                                 'energy_forward': grid_L2_energy_forward,
                                 'energy_reverse': grid_L2_energy_reverse,
@@ -537,7 +553,7 @@ def fetch_meter_stream():
                             grid_L3_energy_reverse = round((data_watt_hours['grid']['L3']['energy_reverse'] / data_watt_hours['count'] * factor)/1000, 3)
 
                         if 'L3' in data_watt_hours['grid']:
-                            # update previously set dummy data
+                            # update previously set data
                             total_jsonpayload['grid']['L3'].update({
                                 'energy_forward': grid_L3_energy_forward,
                                 'energy_reverse': grid_L3_energy_reverse,
@@ -974,7 +990,7 @@ class DbusEnphaseEnvoyPvService:
         self._dbusservice.add_path('/ProductId', 0xFFFF)
         self._dbusservice.add_path('/ProductName', productname)
         self._dbusservice.add_path('/CustomName', productname)
-        self._dbusservice.add_path('/FirmwareVersion', '0.0.2')
+        self._dbusservice.add_path('/FirmwareVersion', '0.1.0')
         self._dbusservice.add_path('/HardwareVersion', hardware)
         self._dbusservice.add_path('/Connected', 1)
 
@@ -1023,7 +1039,7 @@ class DbusEnphaseEnvoyPvService:
             self._dbusservice['/Ac/L3/Energy/Forward'] = round(pv_L3_forward, 2)   # needed for VRM historical data
 
         logging.info("PV: {:.1f} W - {:.1f} V - {:.1f} A".format(pv_power, pv_voltage, pv_current))
-        if pv_L1_power > 0 and pv_power != pv_L1_power:
+        if 'L1' in data_meter_stream['pv'] and data_meter_stream['pv']['power'] != data_meter_stream['pv']['L1']['power']:
             logging.info("|- L1: {:.1f} W - {:.1f} V - {:.1f} A".format(pv_L1_power, pv_L1_voltage, pv_L1_current))
         if 'L2' in data_meter_stream['pv']:
             logging.info("|- L2: {:.1f} W - {:.1f} V - {:.1f} A".format(pv_L2_power, pv_L2_voltage, pv_L2_current))
