@@ -117,42 +117,6 @@ replace_meters = ('production', 'pv'), ('net-consumption', 'grid'), ('total-cons
 replace_phases = ('ph-a', 'L1'), ('ph-b', 'L2'), ('ph-c', 'L3')
 replace_devices = ('PCU', 'inverters'), ('ACB', 'batteries'), ('NSRB', 'relais')
 
-pv_power = 0
-pv_current = 0
-pv_voltage = 0
-pv_forward = 0
-
-pv_L1_power = 0
-pv_L1_current = 0
-pv_L1_voltage = 0
-pv_L1_forward = 0
-
-pv_L2_power = 0
-pv_L2_current = 0
-pv_L2_voltage = 0
-pv_L2_forward = 0
-
-pv_L3_power = 0
-pv_L3_current = 0
-pv_L3_voltage = 0
-pv_L3_forward = 0
-
-grid_power = 0
-grid_energy_forward = 0
-grid_energy_reverse = 0
-
-grid_L1_power = 0
-grid_L1_energy_forward = 0
-grid_L1_energy_reverse = 0
-
-grid_L2_power = 0
-grid_L2_energy_forward = 0
-grid_L2_energy_reverse = 0
-
-grid_L3_power = 0
-grid_L3_energy_forward = 0
-grid_L3_energy_reverse = 0
-
 data_meter_stream = {}
 data_production_historic = {}
 data_devices = {}
@@ -193,17 +157,7 @@ def on_publish(client, userdata, rc):
 def fetch_meter_stream():
     logging.debug("step: fetch_meter_stream")
 
-    global config, \
-        data_meter_stream, data_production_historic, \
-        grid_power,    grid_energy_forward,    grid_energy_reverse, \
-        grid_L1_power, grid_L1_energy_forward, grid_L1_energy_reverse, \
-        grid_L2_power, grid_L2_energy_forward, grid_L2_energy_reverse, \
-        grid_L3_power, grid_L3_energy_forward, grid_L3_energy_reverse, \
-        keep_running, \
-        pv_power,    pv_current,    pv_voltage,    pv_forward, pv_energy_forward, \
-        pv_L1_power, pv_L1_current, pv_L1_voltage, pv_L1_forward, pv_L1_energy_forward, \
-        pv_L2_power, pv_L2_current, pv_L2_voltage, pv_L2_forward, pv_L2_energy_forward, \
-        pv_L3_power, pv_L3_current, pv_L3_voltage, pv_L3_forward, pv_L3_energy_forward
+    global config, data_meter_stream, data_production_historic, keep_running
 
     marker = b'data: '
 
@@ -275,8 +229,6 @@ def fetch_meter_stream():
                         total_voltage         = 0
                         total_power_react     = 0
                         total_power_appearent = 0
-                        total_energy_forward  = 0
-                        total_energy_reverse  = 0
 
                         for phase in ['ph-a', 'ph-b', 'ph-c']:
 
@@ -289,7 +241,6 @@ def fetch_meter_stream():
                                 total_voltage         += float(data[meter][phase]['v'])
                                 total_power_react     += float(data[meter][phase]['q'])
                                 total_power_appearent += float(data[meter][phase]['s'])
-                                total_energy_forward  += float(data_production_historic[meter_name][phase_name]['whLifetime']/1000)
 
                                 phase_data = {
                                     'power': float(data[meter][phase]['p']),
@@ -309,17 +260,12 @@ def fetch_meter_stream():
                                     phase_data.update({
                                         'energy_forward': float(round(data_production_historic[meter_name][phase_name]['whLifetime']/1000, 3)),
                                     })
-                                    globals()['pv_' + phase_name + '_power'] = float(data[meter][phase]['p'])
-                                    globals()['pv_' + phase_name + '_current'] = float(data[meter][phase]['i'])
-                                    globals()['pv_' + phase_name + '_voltage'] = float(data[meter][phase]['v'])
-                                    globals()['pv_' + phase_name + '_forward'] = float(round(data_production_historic[meter_name][phase_name]['whLifetime']/1000, 3))
 
                                 if meter_name == 'grid':
                                     phase_data.update({
                                         'energy_forward': json_data['grid'][phase_name]['energy_forward'] if 'grid' in json_data and phase_name in json_data['grid'] else 0,
                                         'energy_reverse': json_data['grid'][phase_name]['energy_reverse'] if 'grid' in json_data and phase_name in json_data['grid'] else 0,
                                     })
-                                    globals()['grid_' + phase_name + '_power'] = float(data[meter][phase]['p'])
 
                                 if meter_name == 'consumption':
                                     phase_data.update({
@@ -343,18 +289,11 @@ def fetch_meter_stream():
                         })
 
                         if meter_name == 'pv':
-                            pv_power = total_power
-                            pv_current = total_current
-                            pv_voltage = total_voltage
-                            pv_forward = round(total_energy_forward, 3)
-
                             jsonpayload.update({
                                 'energy_forward': round(data_production_historic[meter_name]['whLifetime']/1000, 3),
                             })
 
                         if meter_name == 'grid':
-                            grid_power = total_power
-
                             jsonpayload.update({
                                 'energy_forward': json_data['grid']['energy_forward'] if 'grid' in json_data else 0,
                                 'energy_reverse': json_data['grid']['energy_reverse'] if 'grid' in json_data else 0,
@@ -418,7 +357,7 @@ def fetch_meter_stream():
                         data_watt_hours.update({
                             ## if PV not needed it can be removed, yet to evaluate
                             #'pv': {
-                            #    'energy_forward': round(data_watt_hours['pv']['energy_forward'] + pv_power, 3),
+                            #    'energy_forward': round(data_watt_hours['pv']['energy_forward'] + total_jsonpayload['pv']['power'], 3),
                             #},
                             'grid': data_watt_hours_grid,
                             'count': data_watt_hours['count'] + 1,
@@ -616,7 +555,7 @@ def fetch_meter_stream():
                             'time_creation': timestamp,
                             ## if PV not needed it can be removed, yet to evaluate
                             #'pv': {
-                            #    'energy_forward': round(pv_power, 3),
+                            #    'energy_forward': round(total_jsonpayload['pv']['power'], 3),
                             #},
                             'grid': data_watt_hours_grid,
                             'count': 1
@@ -1013,38 +952,39 @@ class DbusEnphaseEnvoyPvService:
             logging.info('--> DbusEnphaseEnvoyPvService->_update(): got exit signal')
             sys.exit()
 
-        self._dbusservice['/Ac/Power'] =  round(pv_power, 2)
-        self._dbusservice['/Ac/Current'] = round(pv_current, 2)
-        self._dbusservice['/Ac/Voltage'] = round(pv_voltage, 2)
-        self._dbusservice['/Ac/Energy/Forward'] = round(pv_forward, 2)   # needed for VRM historical data
-
-        self._dbusservice['/Ac/L1/Power'] = round(pv_L1_power, 2)
-        self._dbusservice['/Ac/L1/Current'] = round(pv_L1_current, 2)
-        self._dbusservice['/Ac/L1/Voltage'] = round(pv_L1_voltage, 2)
-        self._dbusservice['/Ac/L1/Energy/Forward'] = round(pv_L1_forward, 2)   # needed for VRM historical data
+        self._dbusservice['/Ac/Power']  =  round(data_meter_stream['pv']['power'], 2)
+        self._dbusservice['/Ac/Current'] = round(data_meter_stream['pv']['current'], 2)
+        self._dbusservice['/Ac/Voltage'] = round(data_meter_stream['pv']['voltage'], 2)
+        self._dbusservice['/Ac/Energy/Forward'] = round(data_meter_stream['pv']['energy_forward'], 2)   # needed for VRM historical data
 
         self._dbusservice['/ErrorCode'] = 0
         self._dbusservice['/StatusCode'] = 7
 
+        if 'L1' in data_meter_stream['pv']:
+            self._dbusservice['/Ac/L1/Power']  = round(data_meter_stream['pv']['L1']['power'], 2)
+            self._dbusservice['/Ac/L1/Current'] = round(data_meter_stream['pv']['L1']['current'], 2)
+            self._dbusservice['/Ac/L1/Voltage'] = round(data_meter_stream['pv']['L1']['voltage'], 2)
+            self._dbusservice['/Ac/L1/Energy/Forward'] = round(data_meter_stream['pv']['L1']['energy_forward'], 2)   # needed for VRM historical data
+
         if 'L2' in data_meter_stream['pv']:
-            self._dbusservice['/Ac/L2/Power'] = round(pv_L2_power, 2)
-            self._dbusservice['/Ac/L2/Current'] = round(pv_L2_current, 2)
-            self._dbusservice['/Ac/L2/Voltage'] = round(pv_L2_voltage, 2)
-            self._dbusservice['/Ac/L2/Energy/Forward'] = round(pv_L2_forward, 2)   # needed for VRM historical data
+            self._dbusservice['/Ac/L2/Power']  = round(data_meter_stream['pv']['L2']['power'], 2)
+            self._dbusservice['/Ac/L2/Current'] = round(data_meter_stream['pv']['L2']['current'], 2)
+            self._dbusservice['/Ac/L2/Voltage'] = round(data_meter_stream['pv']['L2']['voltage'], 2)
+            self._dbusservice['/Ac/L2/Energy/Forward'] = round(data_meter_stream['pv']['L2']['energy_forward'], 2)   # needed for VRM historical data
 
         if 'L3' in data_meter_stream['pv']:
-            self._dbusservice['/Ac/L3/Power'] = round(pv_L3_power, 2)
-            self._dbusservice['/Ac/L3/Current'] = round(pv_L3_current, 2)
-            self._dbusservice['/Ac/L3/Voltage'] = round(pv_L3_voltage, 2)
-            self._dbusservice['/Ac/L3/Energy/Forward'] = round(pv_L3_forward, 2)   # needed for VRM historical data
+            self._dbusservice['/Ac/L3/Power']  = round(data_meter_stream['pv']['L3']['power'], 2)
+            self._dbusservice['/Ac/L3/Current'] = round(data_meter_stream['pv']['L3']['current'], 2)
+            self._dbusservice['/Ac/L3/Voltage'] = round(data_meter_stream['pv']['L3']['voltage'], 2)
+            self._dbusservice['/Ac/L3/Energy/Forward'] = round(data_meter_stream['pv']['L3']['energy_forward'], 2)   # needed for VRM historical data
 
-        logging.info("PV: {:.1f} W - {:.1f} V - {:.1f} A".format(pv_power, pv_voltage, pv_current))
+        logging.info("PV: {:.1f} W - {:.1f} V - {:.1f} A".format(data_meter_stream['pv']['power'], data_meter_stream['pv']['voltage'], data_meter_stream['pv']['current']))
         if 'L1' in data_meter_stream['pv'] and data_meter_stream['pv']['power'] != data_meter_stream['pv']['L1']['power']:
-            logging.info("|- L1: {:.1f} W - {:.1f} V - {:.1f} A".format(pv_L1_power, pv_L1_voltage, pv_L1_current))
+            logging.info("|- L1: {:.1f} W - {:.1f} V - {:.1f} A".format(data_meter_stream['pv']['L1']['power'], data_meter_stream['pv']['L1']['voltage'], data_meter_stream['pv']['L1']['current']))
         if 'L2' in data_meter_stream['pv']:
-            logging.info("|- L2: {:.1f} W - {:.1f} V - {:.1f} A".format(pv_L2_power, pv_L2_voltage, pv_L2_current))
+            logging.info("|- L2: {:.1f} W - {:.1f} V - {:.1f} A".format(data_meter_stream['pv']['L2']['power'], data_meter_stream['pv']['L2']['voltage'], data_meter_stream['pv']['L2']['current']))
         if 'L3' in data_meter_stream['pv']:
-            logging.info("|- L3: {:.1f} W - {:.1f} V - {:.1f} A".format(pv_L3_power, pv_L3_voltage, pv_L3_current))
+            logging.info("|- L3: {:.1f} W - {:.1f} V - {:.1f} A".format(data_meter_stream['pv']['L3']['power'], data_meter_stream['pv']['L3']['voltage'], data_meter_stream['pv']['L3']['current']))
 
 
         # increment UpdateIndex - to show that new data is available
@@ -1138,7 +1078,9 @@ def main():
 
 
     # wait to fetch first data, else dbus initialisation for phase count is wrong
-    time.sleep(2)
+    while not bool(data_meter_stream):
+        time.sleep(1)
+        logging.info('--> data_meter_stream not yet ready')
 
     #formatting
     _kwh = lambda p, v: (str(round(v, 2)) + 'kWh')
@@ -1153,16 +1095,19 @@ def main():
         '/Ac/Voltage': {'initial': 0, 'textformat': _v},
         '/Ac/Energy/Forward': {'initial': 0, 'textformat': _kwh},
 
-        '/Ac/L1/Power': {'initial': 0, 'textformat': _w},
-        '/Ac/L1/Current': {'initial': 0, 'textformat': _a},
-        '/Ac/L1/Voltage': {'initial': 0, 'textformat': _v},
-        '/Ac/L1/Energy/Forward': {'initial': 0, 'textformat': _kwh},
-
         '/Ac/MaxPower': {'initial': int(config['PV']['max']), 'textformat': _w},
         '/Ac/Position': {'initial': int(config['PV']['position']), 'textformat': _n},
         '/Ac/StatusCode': {'initial': 0, 'textformat': _n},
         '/UpdateIndex': {'initial': 0, 'textformat': _n},
     }
+
+    if 'L1' in data_meter_stream['pv']:
+        paths_dbus.update({
+            '/Ac/L1/Power': {'initial': 0, 'textformat': _w},
+            '/Ac/L1/Current': {'initial': 0, 'textformat': _a},
+            '/Ac/L1/Voltage': {'initial': 0, 'textformat': _v},
+            '/Ac/L1/Energy/Forward': {'initial': 0, 'textformat': _kwh},
+        })
 
     if 'L2' in data_meter_stream['pv']:
         paths_dbus.update({
@@ -1179,7 +1124,6 @@ def main():
             '/Ac/L3/Voltage': {'initial': 0, 'textformat': _v},
             '/Ac/L3/Energy/Forward': {'initial': 0, 'textformat': _kwh},
         })
-
 
     pvac_output = DbusEnphaseEnvoyPvService(
         servicename='com.victronenergy.pvinverter.enphase_envoy',
