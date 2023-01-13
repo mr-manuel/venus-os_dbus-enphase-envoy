@@ -567,30 +567,45 @@ def fetch_meter_stream():
                     # make fetched data globally available
                     data_meter_stream = total_jsonpayload
 
-        except requests.exceptions.RequestException as e:
-            logging.error('--> fetch_meter_stream(): RequestException occurred: \"%s\"' % e)
-            keep_running = False
-            sys.exit()
-
-        except requests.exceptions.ConnectionError as e:
-            logging.error('--> fetch_meter_stream(): ConnectionError occurred: \"%s\"' % e)
-            keep_running = False
-            sys.exit()
-
-        except requests.exceptions.ConnectTimeout as e:
-            logging.error('--> fetch_meter_stream(): ConnectTimeout occurred: \"%s\"' % e)
-            keep_running = False
-            sys.exit()
-
-        except requests.exceptions.ReadTimeout as e:
-            logging.error('--> fetch_meter_stream(): ReadTimeout occurred: \"%s\"' % e)
-            keep_running = False
-            sys.exit()
-
-        except requests.exceptions.Timeout as e:
-            logging.error('--> fetch_meter_stream(): Timeout occurred: \"%s\"' % e)
-            keep_running = False
-            sys.exit()
+#        except requests.exceptions.HTTPError as e:
+#            logging.error('--> fetch_meter_stream(): HTTPError occurred: \"%s\"' % e)
+#            keep_running = False
+#            sys.exit()
+#
+#        except requests.exceptions.ConnectionError as e:
+#            logging.error('--> fetch_meter_stream(): ConnectionError occurred: \"%s\"' % e)
+#            keep_running = False
+#            sys.exit()
+#
+#        except requests.exceptions.Timeout as e:
+#            logging.error('--> fetch_meter_stream(): Timeout occurred: \"%s\"' % e)
+#            keep_running = False
+#            sys.exit()
+#
+#        except requests.exceptions.ConnectTimeout as e:
+#            logging.error('--> fetch_meter_stream(): ConnectTimeout occurred: \"%s\"' % e)
+#            keep_running = False
+#            sys.exit()
+#
+#        except requests.exceptions.ReadTimeout as e:
+#            logging.error('--> fetch_meter_stream(): ReadTimeout occurred: \"%s\"' % e)
+#            keep_running = False
+#            sys.exit()
+#
+#        except requests.exceptions.RetryError as e:
+#            logging.error('--> fetch_meter_stream(): RetryError occurred: \"%s\"' % e)
+#            keep_running = False
+#            sys.exit()
+#
+#        except requests.exceptions.RequestException as e:
+#            logging.error('--> fetch_meter_stream(): RequestException occurred: \"%s\"' % e)
+#            keep_running = False
+#            sys.exit()
+#
+#        except requests.exceptions as e:
+#            logging.error('--> fetch_meter_stream(): Request exceptions occurred: \"%s\"' % json.dumps(e))
+#            keep_running = False
+#            sys.exit()
 
         except Exception as e:
             logging.error('--> fetch_meter_stream(): Exception occurred: \"%s\"' % e)
@@ -603,54 +618,61 @@ def fetch_production_historic():
 
     global replace_meters, data_production_historic
 
-    url = 'http://%s/production.json?details=1' % config['ENVOY']['address']
-    data = requests.get(url, timeout=5).json()
+    try:
 
-    total_jsonpayload = {}
+        url = 'http://%s/production.json?details=1' % config['ENVOY']['address']
+        data = requests.get(url, timeout=5).json()
 
-    for meter in data.values():
+        total_jsonpayload = {}
 
-        for content in meter:
+        for meter in data.values():
 
-            if 'measurementType' in content and (
-                    content['measurementType'] == 'production'
-                    or
-                    content['measurementType'] == 'total-consumption'
-                    or
-                    content['measurementType'] == 'net-consumption'
-                ):
+            for content in meter:
 
-                meter_name = reduce(lambda a, kv: a.replace(*kv), replace_meters, content['measurementType'])
+                if 'measurementType' in content and (
+                        content['measurementType'] == 'production'
+                        or
+                        content['measurementType'] == 'total-consumption'
+                        or
+                        content['measurementType'] == 'net-consumption'
+                    ):
 
-                jsonpayload = {}
+                    meter_name = reduce(lambda a, kv: a.replace(*kv), replace_meters, content['measurementType'])
 
-                i = 1
+                    jsonpayload = {}
 
-                if 'lines' in content:
+                    i = 1
 
-                    for phase in content['lines']:
+                    if 'lines' in content:
 
-                        jsonpayload.update({
-                            'L' + str(i): {
-                                "whLifetime": float(phase['whLifetime']),
-                                "vahLifetime": float(phase['vahLifetime']),
-                                "whToday": float(phase['whToday']),
-                                "vahToday": float(phase['vahToday']),
-                            }
-                        })
-                        i += 1
+                        for phase in content['lines']:
 
-                jsonpayload.update({
-                    "whLifetime": float(content['whLifetime']),
-                    "vahLifetime": float(content['vahLifetime']),
-                    "whToday": float(content['whToday']),
-                    "vahToday": float(content['vahToday']),
-                })
+                            jsonpayload.update({
+                                'L' + str(i): {
+                                    "whLifetime": float(phase['whLifetime']),
+                                    "vahLifetime": float(phase['vahLifetime']),
+                                    "whToday": float(phase['whToday']),
+                                    "vahToday": float(phase['vahToday']),
+                                }
+                            })
+                            i += 1
 
-                total_jsonpayload.update({meter_name: jsonpayload})
+                    jsonpayload.update({
+                        "whLifetime": float(content['whLifetime']),
+                        "vahLifetime": float(content['vahLifetime']),
+                        "whToday": float(content['whToday']),
+                        "vahToday": float(content['vahToday']),
+                    })
 
-    # make fetched data globally available
-    data_production_historic = total_jsonpayload
+                    total_jsonpayload.update({meter_name: jsonpayload})
+
+        # make fetched data globally available
+        data_production_historic = total_jsonpayload
+
+    except Exception as e:
+        logging.error('--> fetch_production_historic(): Exception occurred: \"%s\"' % e)
+        keep_running = False
+        sys.exit()
 
 
 def fetch_devices():
@@ -658,39 +680,46 @@ def fetch_devices():
 
     global replace_devices, data_devices
 
-    url = 'http://%s/inventory.json' % config['ENVOY']['address']
-    data = requests.get(url, timeout=5).json()
+    try:
 
-    total_jsonpayload = {}
+        url = 'http://%s/inventory.json' % config['ENVOY']['address']
+        data = requests.get(url, timeout=5).json()
 
-    for device_type in data:
+        total_jsonpayload = {}
 
-        device_name = reduce(lambda a, kv: a.replace(*kv), replace_devices, device_type['type'])
+        for device_type in data:
 
-        jsonpayload = {}
+            device_name = reduce(lambda a, kv: a.replace(*kv), replace_devices, device_type['type'])
 
-        for device in device_type['devices']:
+            jsonpayload = {}
 
-            device_data = {
-                "status": device['device_status'],
-                "producing": device['producing'],
-                "communicating": device['communicating'],
-                "provisioned": device['provisioned'],
-                "operating": device['operating'],
-            }
+            for device in device_type['devices']:
 
-            if 'relay' in device:
-                device_data.update({
-                        "relay": device['relay'],
-                        "reason": device['reason'],
-                })
+                device_data = {
+                    "status": device['device_status'],
+                    "producing": device['producing'],
+                    "communicating": device['communicating'],
+                    "provisioned": device['provisioned'],
+                    "operating": device['operating'],
+                }
 
-            jsonpayload.update({device['serial_num']: device_data})
+                if 'relay' in device:
+                    device_data.update({
+                            "relay": device['relay'],
+                            "reason": device['reason'],
+                    })
 
-        total_jsonpayload.update({device_name: jsonpayload})
+                jsonpayload.update({device['serial_num']: device_data})
 
-    # make fetched data globally available
-    data_devices = total_jsonpayload
+            total_jsonpayload.update({device_name: jsonpayload})
+
+        # make fetched data globally available
+        data_devices = total_jsonpayload
+
+    except Exception as e:
+        logging.error('--> fetch_devices(): Exception occurred: \"%s\"' % e)
+        keep_running = False
+        sys.exit()
 
 
 def fetch_inverters():
@@ -698,22 +727,29 @@ def fetch_inverters():
 
     global data_inverters
 
-    url = 'http://%s/api/v1/production/inverters' % config['ENVOY']['address']
-    data = requests.get(url, auth=HTTPDigestAuth('installer', config['ENVOY']['password'])).json()
+    try:
 
-    total_jsonpayload = {}
+        url = 'http://%s/api/v1/production/inverters' % config['ENVOY']['address']
+        data = requests.get(url, auth=HTTPDigestAuth('installer', config['ENVOY']['password'])).json()
 
-    for inverter in data:
+        total_jsonpayload = {}
 
-        total_jsonpayload.update({
-            inverter['serialNumber']: {
-                'lastReportDate': inverter['lastReportDate'],
-                'lastReportWatts': inverter['lastReportWatts']
-            }
-        })
+        for inverter in data:
 
-    # make fetched data globally available
-    data_inverters = total_jsonpayload
+            total_jsonpayload.update({
+                inverter['serialNumber']: {
+                    'lastReportDate': inverter['lastReportDate'],
+                    'lastReportWatts': inverter['lastReportWatts']
+                }
+            })
+
+        # make fetched data globally available
+        data_inverters = total_jsonpayload
+
+    except Exception as e:
+        logging.error('--> fetch_inverters(): Exception occurred: \"%s\"' % e)
+        keep_running = False
+        sys.exit()
 
 
 def fetch_events():
@@ -721,24 +757,31 @@ def fetch_events():
 
     global data_events
 
-    url = 'http://%s/datatab/event_dt.rb?start=0&length=10' % config['ENVOY']['address']
-    data = requests.get(url, timeout=5).json()
+    try:
 
-    total_jsonpayload = {}
+        url = 'http://%s/datatab/event_dt.rb?start=0&length=10' % config['ENVOY']['address']
+        data = requests.get(url, timeout=5).json()
 
-    for event in data['aaData']:
+        total_jsonpayload = {}
 
-        total_jsonpayload.update({
-            event[0]: {
-                'message': event[1],
-                'serialNumber': event[2],
-                'type': event[3],
-                'datetime': event[4],
-            }
-        })
+        for event in data['aaData']:
 
-    # make fetched data globally available
-    data_events = total_jsonpayload
+            total_jsonpayload.update({
+                event[0]: {
+                    'message': event[1],
+                    'serialNumber': event[2],
+                    'type': event[3],
+                    'datetime': event[4],
+                }
+            })
+
+        # make fetched data globally available
+        data_events = total_jsonpayload
+
+    except Exception as e:
+        logging.error('--> fetch_events(): Exception occurred: \"%s\"' % e)
+        keep_running = False
+        sys.exit()
 
 
 def fetch_handler():
