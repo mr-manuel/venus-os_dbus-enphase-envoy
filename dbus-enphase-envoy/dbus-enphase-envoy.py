@@ -242,7 +242,7 @@ def fetch_meter_stream():
                                 total_power_react     += float(data[meter][phase]['q'])
                                 total_power_appearent += float(data[meter][phase]['s'])
 
-                                # if power is below 5 W, than show 0 W. This prevents showing 1-2 W production when no sun is shining
+                                # if PV power is below 5 W, than show 0 W. This prevents showing 1-2 W on PV when no sun is shining
                                 if meter_name == 'pv' and data[meter][phase]['p'] < 5:
                                     data[meter][phase]['p'] = 0
                                     data[meter][phase]['i'] = 0
@@ -281,7 +281,7 @@ def fetch_meter_stream():
                                     phase_name: phase_data
                                 })
 
-                        # if power is below 5 W, than show 0 W. This prevents showing 1-2 W production when no sun is shining
+                        # if PV power is below 5 W, than show 0 W. This prevents showing 1-2 W on PV when no sun is shining
                         if meter_name == 'pv' and total_power < 5:
                             total_power = 0
                             total_current = 0
