@@ -27,7 +27,8 @@ This script adds the Enphase Microinverters as a single PV system in Venus OS. T
 
 It is also possible to publish the following data as JSON to a MQTT topic for other use (can be enabled in `config.ini`). For each list element a different topic is needed:
 
-* **Meters** (PV, Grid, Consumption): Power, current, voltage, powerreact, powerappearent, powerfactor, frequency, whToday, vahToday, whLifetime, vahLifetime for total (except: powerfactor and frequency), L1, L2 and L3
+* **Meters** (PV, Grid, Consumption): Power, current, voltage, powerreact, powerappearent, powerfactor, frequency, whToday, vahToday, whLifetime, vahLifetime for total (except: powerfactor and frequency), L1, L2 and L3<br>
+Note: If the power of the PV meter is below 5 W the driver will display 0 W. This prevents that a very small production power is shown when no sun is shining.
 
 * **Devices** (Microinverters, Q-Relay): Serial number, device status, producing, communicating, provisioned and operating. For Q-Relay additionaly: relay [opened/closed] and reason
 

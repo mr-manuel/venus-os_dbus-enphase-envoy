@@ -242,6 +242,11 @@ def fetch_meter_stream():
                                 total_power_react     += float(data[meter][phase]['q'])
                                 total_power_appearent += float(data[meter][phase]['s'])
 
+                                # if power is below 5 W, than show 0 W. This prevents showing 1-2 W production when no sun is shining
+                                if meter_name == 'pv' and data[meter][phase]['p'] < 5:
+                                    data[meter][phase]['p'] = 0
+                                    data[meter][phase]['i'] = 0
+
                                 phase_data = {
                                     'power': float(data[meter][phase]['p']),
                                     'current': float(data[meter][phase]['i']),
@@ -275,6 +280,11 @@ def fetch_meter_stream():
                                 jsonpayload.update({
                                     phase_name: phase_data
                                 })
+
+                        # if power is below 5 W, than show 0 W. This prevents showing 1-2 W production when no sun is shining
+                        if meter_name == 'pv' and total_power < 5:
+                            total_power = 0
+                            total_current = 0
 
                         jsonpayload.update({
                             'power': total_power,
@@ -566,46 +576,6 @@ def fetch_meter_stream():
 
                     # make fetched data globally available
                     data_meter_stream = total_jsonpayload
-
-#        except requests.exceptions.HTTPError as e:
-#            logging.error('--> fetch_meter_stream(): HTTPError occurred: \"%s\"' % e)
-#            keep_running = False
-#            sys.exit()
-#
-#        except requests.exceptions.ConnectionError as e:
-#            logging.error('--> fetch_meter_stream(): ConnectionError occurred: \"%s\"' % e)
-#            keep_running = False
-#            sys.exit()
-#
-#        except requests.exceptions.Timeout as e:
-#            logging.error('--> fetch_meter_stream(): Timeout occurred: \"%s\"' % e)
-#            keep_running = False
-#            sys.exit()
-#
-#        except requests.exceptions.ConnectTimeout as e:
-#            logging.error('--> fetch_meter_stream(): ConnectTimeout occurred: \"%s\"' % e)
-#            keep_running = False
-#            sys.exit()
-#
-#        except requests.exceptions.ReadTimeout as e:
-#            logging.error('--> fetch_meter_stream(): ReadTimeout occurred: \"%s\"' % e)
-#            keep_running = False
-#            sys.exit()
-#
-#        except requests.exceptions.RetryError as e:
-#            logging.error('--> fetch_meter_stream(): RetryError occurred: \"%s\"' % e)
-#            keep_running = False
-#            sys.exit()
-#
-#        except requests.exceptions.RequestException as e:
-#            logging.error('--> fetch_meter_stream(): RequestException occurred: \"%s\"' % e)
-#            keep_running = False
-#            sys.exit()
-#
-#        except requests.exceptions as e:
-#            logging.error('--> fetch_meter_stream(): Request exceptions occurred: \"%s\"' % json.dumps(e))
-#            keep_running = False
-#            sys.exit()
 
         except Exception as e:
             logging.error('--> fetch_meter_stream(): Exception occurred: \"%s\"' % e)
@@ -972,7 +942,7 @@ class DbusEnphaseEnvoyPvService:
         self._dbusservice.add_path('/ProductId', 0xFFFF)
         self._dbusservice.add_path('/ProductName', productname)
         self._dbusservice.add_path('/CustomName', productname)
-        self._dbusservice.add_path('/FirmwareVersion', '0.1.0')
+        self._dbusservice.add_path('/FirmwareVersion', '0.1.1')
         self._dbusservice.add_path('/HardwareVersion', hardware)
         self._dbusservice.add_path('/Connected', 1)
 
