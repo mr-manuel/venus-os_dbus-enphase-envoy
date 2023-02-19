@@ -21,19 +21,35 @@ from functools import reduce
 sys.path.insert(1, os.path.join(os.path.dirname(__file__), 'ext', 'velib_python'))
 from vedbus import VeDbusService
 
-# use WARNING for default, INFO for displaying actual steps and values, DEBUG for debugging
-logging.basicConfig(level=logging.WARNING)
 
 # get values from config.ini file
 try:
     config = configparser.ConfigParser()
     config.read("%s/config.ini" % (os.path.dirname(os.path.realpath(__file__))))
     if (config['ENVOY']['address'] == "IP_ADDR_OR_FQDN"):
-        logging.error("config.ini file using invalid default values.")
-        raise
+        print("ERROR:config.ini file is using invalid default values like IP_ADDR_OR_FQDN")
+        sys.exit()
 except:
-    logging.error("config.ini file not found. Copy or rename the config.sample.ini to config.ini")
+    print("ERROR:config.ini file not found. Copy or rename the config.sample.ini to config.ini")
     sys.exit()
+
+
+# Get logging level from config.ini
+# ERROR = shows errors only
+# WARNING = shows ERROR and warnings
+# INFO = shows WARNING and running functions
+# DEBUG = shows INFO and data/values
+if 'DEFAULT' in config and 'logging' in config['DEFAULT']:
+    if config['DEFAULT']['logging'] == 'DEBUG':
+        logging.basicConfig(level=logging.DEBUG)
+    elif config['DEFAULT']['logging'] == 'INFO':
+        logging.basicConfig(level=logging.INFO)
+    elif config['DEFAULT']['logging'] == 'ERROR':
+        logging.basicConfig(level=logging.ERROR)
+    else:
+        logging.basicConfig(level=logging.WARNING)
+else:
+    logging.basicConfig(level=logging.WARNING)
 
 
 # check if MQTT is enabled in config
@@ -129,12 +145,12 @@ def on_disconnect(client, userdata, rc):
     global connected
     logging.warning("MQTT client: Got disconnected")
     if rc != 0:
-        logging.debug('MQTT client: Unexpected MQTT disconnection. Will auto-reconnect')
+        logging.warning("MQTT client: Unexpected MQTT disconnection. Will auto-reconnect")
     else:
-        logging.debug('MQTT client: rc value:' + str(rc))
+        logging.warning("MQTT client: rc value:" + str(rc))
 
     try:
-        logging.info("MQTT client: Trying to reconnect")
+        logging.warning("MQTT client: Trying to reconnect")
         client.connect(config['MQTT']['broker_address'])
         connected = 1
     except Exception as e:
@@ -155,7 +171,7 @@ def on_publish(client, userdata, rc):
 
 # ENPHASE - ENOVY-S
 def fetch_meter_stream():
-    logging.debug("step: fetch_meter_stream")
+    logging.info("step: fetch_meter_stream")
 
     global config, keep_running,\
         data_meter_stream, data_production_historic
@@ -184,13 +200,15 @@ def fetch_meter_stream():
         with open(data_watt_hours_working_file, 'r') as file:
             file = open(data_watt_hours_working_file, "r")
             json_data = json.load(file)
-            logging.info('Loaded JSON once: %s' % json.dumps(json_data))
+            logging.info("Loaded JSON for energy forward/reverse once")
+            logging.debug(json.dumps(json_data))
     # if not, check if file in persistent storage exists
     elif path.isfile(data_watt_hours_storage_file):
         with open(data_watt_hours_storage_file, 'r') as file:
             file = open(data_watt_hours_storage_file, "r")
             json_data = json.load(file)
-            logging.info('Loaded JSON once from persistent storage: %s' % json.dumps(json_data))
+            logging.info("Loaded JSON for energy forward/reverse once from persistent storage")
+            logging.debug(json.dumps(json_data))
     else:
         json_data = {}
 
@@ -209,7 +227,7 @@ def fetch_meter_stream():
             for line in response.iter_lines():
 
                 if keep_running == False:
-                    logging.info('--> fetch_meter_stream(): got exit signal')
+                    logging.info("--> fetch_meter_stream(): got exit signal")
                     sys.exit()
 
                 if line.startswith(marker):
@@ -375,7 +393,7 @@ def fetch_meter_stream():
 
                         })
 
-                        logging.info('--> data_watt_hours(): %s' % json.dumps(data_watt_hours))
+                        logging.debug("--> data_watt_hours(): %s" % json.dumps(data_watt_hours))
 
                     # build mean, calculate time diff and Wh and write to file
                     else:
@@ -384,14 +402,16 @@ def fetch_meter_stream():
                             with open(data_watt_hours_working_file, 'r') as file:
                                 file = open(data_watt_hours_working_file, "r")
                                 data_watt_hours_old = json.load(file)
-                                logging.info('Loaded JSON: %s' % json.dumps(data_watt_hours_old))
+                                logging.info("Loaded JSON")
+                                logging.debug(json.dumps(data_watt_hours_old))
 
                         # if not, check if file in persistent storage exists
                         elif path.isfile(data_watt_hours_storage_file):
                             with open(data_watt_hours_storage_file, 'r') as file:
                                 file = open(data_watt_hours_storage_file, "r")
                                 data_watt_hours_old = json.load(file)
-                                logging.info('Loaded JSON from persistent storage: %s' % json.dumps(data_watt_hours_old))
+                                logging.info("Loaded JSON from persistent storage")
+                                logging.debug(json.dumps(data_watt_hours_old))
 
                         # if not, generate data
                         else:
@@ -427,7 +447,8 @@ def fetch_meter_stream():
                                 #},
                                 'grid': data_watt_hours_old_grid
                             }
-                            logging.info('Generated JSON: %s' % json.dumps(data_watt_hours_old))
+                            logging.info("Generated JSON")
+                            logging.debug(json.dumps(data_watt_hours_old))
 
                         # factor to calculate Watthours: mean power * measuuring period / 3600 seconds (1 hour)
                         factor = (timestamp - data_watt_hours['time_creation']) / 3600
@@ -533,7 +554,7 @@ def fetch_meter_stream():
                             with open(data_watt_hours_storage_file, 'w') as file:
                                 file.write(json.dumps(json_data))
                             timestamp_storage_file = timestamp
-                            logging.info('Written JSON to persistent storage.')
+                            logging.info("Written JSON for energy forward/reverse to persistent storage.")
 
                         # begin a new cycle
                         data_watt_hours_grid = {
@@ -573,19 +594,19 @@ def fetch_meter_stream():
 
                         }
 
-                        logging.info('--> data_watt_hours(): %s' % json.dumps(data_watt_hours))
+                        logging.debug("--> data_watt_hours(): %s" % json.dumps(data_watt_hours))
 
                     # make fetched data globally available
                     data_meter_stream = total_jsonpayload
 
         except Exception as e:
-            logging.error('--> fetch_meter_stream(): Exception occurred: \"%s\"' % e)
+            logging.error("--> fetch_meter_stream(): Exception occurred: %s" % e)
             keep_running = False
             sys.exit()
 
 
 def fetch_production_historic():
-    logging.debug("step: fetch_production_historic")
+    logging.info("step: fetch_production_historic")
 
     global replace_meters, data_production_historic
 
@@ -599,7 +620,7 @@ def fetch_production_historic():
             timeout=60
         )
         if response.elapsed.total_seconds() > 5:
-            logging.warning('--> fetch_production_historic(): HTTP request took longer than 5 seconds: %s seconds' % response.elapsed.total_seconds())
+            logging.warning("--> fetch_production_historic(): HTTP request took longer than 5 seconds: %s seconds" % response.elapsed.total_seconds())
 
         total_jsonpayload = {}
 
@@ -648,22 +669,22 @@ def fetch_production_historic():
         data_production_historic = total_jsonpayload
 
     except requests.exceptions.ConnectTimeout as e:
-        logging.error('--> fetch_production_historic(): ConnectTimeout occurred: \"%s\"' % e)
+        logging.error("--> fetch_production_historic(): ConnectTimeout occurred: %s" % e)
 
     except requests.exceptions.ReadTimeout as e:
-        logging.error('--> fetch_production_historic(): ReadTimeout occurred: \"%s\"' % e)
+        logging.error("--> fetch_production_historic(): ReadTimeout occurred: %s" % e)
 
     except requests.exceptions.Timeout as e:
-        logging.error('--> fetch_production_historic(): Timeout occurred: \"%s\"' % e)
+        logging.error("--> fetch_production_historic(): Timeout occurred: %s" % e)
 
     except Exception as e:
-        logging.error('--> fetch_production_historic(): Exception occurred: \"%s\"' % e)
+        logging.error("--> fetch_production_historic(): Exception occurred: %s" % e)
         keep_running = False
         sys.exit()
 
 
 def fetch_devices():
-    logging.debug("step: fetch_devices")
+    logging.info("step: fetch_devices")
 
     global replace_devices, data_devices
 
@@ -675,7 +696,7 @@ def fetch_devices():
             timeout=60
         )
         if response.elapsed.total_seconds() > 5:
-            logging.warning('--> fetch_devices(): HTTP request took longer than 5 seconds: %s seconds' % response.elapsed.total_seconds())
+            logging.warning("--> fetch_devices(): HTTP request took longer than 5 seconds: %s seconds" % response.elapsed.total_seconds())
 
         total_jsonpayload = {}
 
@@ -709,22 +730,22 @@ def fetch_devices():
         data_devices = total_jsonpayload
 
     except requests.exceptions.ConnectTimeout as e:
-        logging.error('--> fetch_production_historic(): ConnectTimeout occurred: \"%s\"' % e)
+        logging.error("--> fetch_production_historic(): ConnectTimeout occurred: %s" % e)
 
     except requests.exceptions.ReadTimeout as e:
-        logging.error('--> fetch_production_historic(): ReadTimeout occurred: \"%s\"' % e)
+        logging.error("--> fetch_production_historic(): ReadTimeout occurred: %s" % e)
 
     except requests.exceptions.Timeout as e:
-        logging.error('--> fetch_production_historic(): Timeout occurred: \"%s\"' % e)
+        logging.error("--> fetch_production_historic(): Timeout occurred: %s" % e)
 
     except Exception as e:
-        logging.error('--> fetch_devices(): Exception occurred: \"%s\"' % e)
+        logging.error("--> fetch_devices(): Exception occurred: %s" % e)
         keep_running = False
         sys.exit()
 
 
 def fetch_inverters():
-    logging.debug("step: fetch_inverters")
+    logging.info("step: fetch_inverters")
 
     global data_inverters
 
@@ -737,7 +758,7 @@ def fetch_inverters():
             auth=HTTPDigestAuth('installer', config['ENVOY']['password'])
         )
         if response.elapsed.total_seconds() > 5:
-            logging.warning('--> fetch_inverters(): HTTP request took longer than 5 seconds: %s seconds' % response.elapsed.total_seconds())
+            logging.warning("--> fetch_inverters(): HTTP request took longer than 5 seconds: %s seconds" % response.elapsed.total_seconds())
 
         total_jsonpayload = {}
 
@@ -754,22 +775,22 @@ def fetch_inverters():
         data_inverters = total_jsonpayload
 
     except requests.exceptions.ConnectTimeout as e:
-        logging.error('--> fetch_production_historic(): ConnectTimeout occurred: \"%s\"' % e)
+        logging.error("--> fetch_production_historic(): ConnectTimeout occurred: %s" % e)
 
     except requests.exceptions.ReadTimeout as e:
-        logging.error('--> fetch_production_historic(): ReadTimeout occurred: \"%s\"' % e)
+        logging.error("--> fetch_production_historic(): ReadTimeout occurred: %s" % e)
 
     except requests.exceptions.Timeout as e:
-        logging.error('--> fetch_production_historic(): Timeout occurred: \"%s\"' % e)
+        logging.error("--> fetch_production_historic(): Timeout occurred: %s" % e)
 
     except Exception as e:
-        logging.error('--> fetch_inverters(): Exception occurred: \"%s\"' % e)
+        logging.error("--> fetch_inverters(): Exception occurred: %s" % e)
         keep_running = False
         sys.exit()
 
 
 def fetch_events():
-    logging.debug("step: fetch_events")
+    logging.info("step: fetch_events")
 
     global data_events
 
@@ -781,7 +802,7 @@ def fetch_events():
             timeout=60
         )
         if response.elapsed.total_seconds() > 5:
-            logging.warning('--> fetch_events(): HTTP request took longer than 5 seconds: %s seconds' % response.elapsed.total_seconds())
+            logging.warning("--> fetch_events(): HTTP request took longer than 5 seconds: %s seconds" % response.elapsed.total_seconds())
 
         total_jsonpayload = {}
 
@@ -800,24 +821,22 @@ def fetch_events():
         data_events = total_jsonpayload
 
     except requests.exceptions.ConnectTimeout as e:
-        logging.error('--> fetch_production_historic(): ConnectTimeout occurred: \"%s\"' % e)
+        logging.error("--> fetch_production_historic(): ConnectTimeout occurred: %s" % e)
 
     except requests.exceptions.ReadTimeout as e:
-        logging.error('--> fetch_production_historic(): ReadTimeout occurred: \"%s\"' % e)
+        logging.error("--> fetch_production_historic(): ReadTimeout occurred: %s" % e)
 
     except requests.exceptions.Timeout as e:
-        logging.error('--> fetch_production_historic(): Timeout occurred: \"%s\"' % e)
+        logging.error("--> fetch_production_historic(): Timeout occurred: %s" % e)
 
     except Exception as e:
-        logging.error('--> fetch_events(): Exception occurred: \"%s\"' % e)
+        logging.error("--> fetch_events(): Exception occurred: %s" % e)
         keep_running = False
         sys.exit()
 
 
 def fetch_handler():
-    logging.debug("step: fetch_handler")
-
-    global config, keep_running, fetch_production_historic_interval, fetch_devices_interval, fetch_inverters_interval, fetch_events_interval
+    logging.info("step: fetch_handler")
 
     global config, keep_running, \
         fetch_production_historic_interval, fetch_devices_interval, fetch_inverters_interval, fetch_events_interval, \
@@ -826,7 +845,7 @@ def fetch_handler():
     while 1:
 
         if keep_running == False:
-            logging.info('--> fetch_handler(): got exit signal')
+            logging.info("--> fetch_handler(): got exit signal")
             sys.exit()
 
         time_now = int(time.time())
@@ -837,7 +856,7 @@ def fetch_handler():
                 fetch_production_historic()
                 logging.info("--> fetch_handler() --> fetch_production_historic(): JSON data feched. Wait %s seconds for next run" % fetch_production_historic_interval)
             except Exception as e:
-                logging.error('--> fetch_handler() --> fetch_production_historic(): Exception occurred: \"%s\". Try again in %s seconds' % (e, fetch_production_historic_interval))
+                logging.error("--> fetch_handler() --> fetch_production_historic(): Exception occurred: %s. Try again in %s seconds" % (e, fetch_production_historic_interval))
 
         if fetch_devices_enabled == 1 and ((time_now - fetch_devices_last) > fetch_devices_interval):
             fetch_devices_last = time_now
@@ -845,7 +864,7 @@ def fetch_handler():
                 fetch_devices()
                 logging.info("--> fetch_handler() --> fetch_devices(): JSON data feched. Wait %s seconds for next run" % fetch_devices_interval)
             except Exception as e:
-                logging.error('--> fetch_handler() --> fetch_devices(): Exception occurred: \"%s\". Try again in %s seconds' % (e, fetch_devices_interval))
+                logging.error("--> fetch_handler() --> fetch_devices(): Exception occurred: %s. Try again in %s seconds" % (e, fetch_devices_interval))
 
         if fetch_inverters_enabled == 1 and ((time_now - fetch_inverters_last) > fetch_inverters_interval):
             fetch_inverters_last = time_now
@@ -853,7 +872,7 @@ def fetch_handler():
                 fetch_inverters()
                 logging.info("--> fetch_handler() --> fetch_inverters(): JSON data feched. Wait %s seconds for next run" % fetch_inverters_interval)
             except Exception as e:
-                logging.error('--> fetch_handler() --> fetch_inverters(): Exception occurred: \"%s\". Try again in %s seconds' % (e, fetch_inverters_interval))
+                logging.error("--> fetch_handler() --> fetch_inverters(): Exception occurred: %s. Try again in %s seconds" % (e, fetch_inverters_interval))
 
         if fetch_events_enabled == 1 and ((time_now - fetch_events_last) > fetch_events_interval):
             fetch_events_last = time_now
@@ -861,14 +880,14 @@ def fetch_handler():
                 fetch_events()
                 logging.info("--> fetch_handler() --> fetch_events(): JSON data feched. Wait %s seconds for next run" % fetch_events_interval)
             except Exception as e:
-                logging.error('--> fetch_handler() --> fetch_events(): Exception occurred: \"%s\". Try again in %s seconds' % (e, fetch_events_interval))
+                logging.error("--> fetch_handler() --> fetch_events(): Exception occurred: %s. Try again in %s seconds" % (e, fetch_events_interval))
 
         # slow down requests to prevent overloading the Envoy
         time.sleep(1)
 
 
 def publish_mqtt_data():
-    logging.debug("step: publish_mqtt_data")
+    logging.info("step: publish_mqtt_data")
 
     global client, config, keep_running, \
         data_meter_stream, data_devices, data_inverters, data_events
@@ -881,7 +900,7 @@ def publish_mqtt_data():
     while 1:
 
         if keep_running == False:
-            logging.info('--> publish_mqtt_data(): got exit signal')
+            logging.info("--> publish_mqtt_data(): got exit signal")
             sys.exit()
 
         try:
@@ -965,7 +984,7 @@ def publish_mqtt_data():
 
 
         except Exception as e:
-            logging.error('--> publish_mqtt_data(): Exception publishing MQTT data: %s' % e)
+            logging.error("--> publish_mqtt_data(): Exception publishing MQTT data: %s" % e)
             keep_running = False
             sys.exit()
 
@@ -1002,7 +1021,7 @@ class DbusEnphaseEnvoyPvService:
         self._dbusservice.add_path('/ProductId', 0xFFFF)
         self._dbusservice.add_path('/ProductName', productname)
         self._dbusservice.add_path('/CustomName', productname)
-        self._dbusservice.add_path('/FirmwareVersion', '0.1.1')
+        self._dbusservice.add_path('/FirmwareVersion', '0.1.2')
         self._dbusservice.add_path('/HardwareVersion', hardware)
         self._dbusservice.add_path('/Connected', 1)
 
@@ -1022,7 +1041,7 @@ class DbusEnphaseEnvoyPvService:
     def _update(self):
 
         if keep_running == False:
-            logging.info('--> DbusEnphaseEnvoyPvService->_update(): got exit signal')
+            logging.info("--> DbusEnphaseEnvoyPvService->_update(): got exit signal")
             sys.exit()
 
         self._dbusservice['/Ac/Power']  =  round(data_meter_stream['pv']['power'], 2)
@@ -1051,13 +1070,13 @@ class DbusEnphaseEnvoyPvService:
             self._dbusservice['/Ac/L3/Voltage'] = round(data_meter_stream['pv']['L3']['voltage'], 2)
             self._dbusservice['/Ac/L3/Energy/Forward'] = round(data_meter_stream['pv']['L3']['energy_forward'], 2)   # needed for VRM historical data
 
-        logging.info("PV: {:.1f} W - {:.1f} V - {:.1f} A".format(data_meter_stream['pv']['power'], data_meter_stream['pv']['voltage'], data_meter_stream['pv']['current']))
+        logging.debug("PV: {:.1f} W - {:.1f} V - {:.1f} A".format(data_meter_stream['pv']['power'], data_meter_stream['pv']['voltage'], data_meter_stream['pv']['current']))
         if 'L1' in data_meter_stream['pv'] and data_meter_stream['pv']['power'] != data_meter_stream['pv']['L1']['power']:
-            logging.info("|- L1: {:.1f} W - {:.1f} V - {:.1f} A".format(data_meter_stream['pv']['L1']['power'], data_meter_stream['pv']['L1']['voltage'], data_meter_stream['pv']['L1']['current']))
+            logging.debug("|- L1: {:.1f} W - {:.1f} V - {:.1f} A".format(data_meter_stream['pv']['L1']['power'], data_meter_stream['pv']['L1']['voltage'], data_meter_stream['pv']['L1']['current']))
         if 'L2' in data_meter_stream['pv']:
-            logging.info("|- L2: {:.1f} W - {:.1f} V - {:.1f} A".format(data_meter_stream['pv']['L2']['power'], data_meter_stream['pv']['L2']['voltage'], data_meter_stream['pv']['L2']['current']))
+            logging.debug("|- L2: {:.1f} W - {:.1f} V - {:.1f} A".format(data_meter_stream['pv']['L2']['power'], data_meter_stream['pv']['L2']['voltage'], data_meter_stream['pv']['L2']['current']))
         if 'L3' in data_meter_stream['pv']:
-            logging.info("|- L3: {:.1f} W - {:.1f} V - {:.1f} A".format(data_meter_stream['pv']['L3']['power'], data_meter_stream['pv']['L3']['voltage'], data_meter_stream['pv']['L3']['current']))
+            logging.debug("|- L3: {:.1f} W - {:.1f} V - {:.1f} A".format(data_meter_stream['pv']['L3']['power'], data_meter_stream['pv']['L3']['voltage'], data_meter_stream['pv']['L3']['current']))
 
 
         # increment UpdateIndex - to show that new data is available
@@ -1093,21 +1112,21 @@ def main():
 
         # check tls and use settings, if provided
         if 'tls_enabled' in config['MQTT'] and config['MQTT']['tls_enabled'] == '1':
-            logging.debug("MQTT client: TLS is enabled")
+            logging.info("MQTT client: TLS is enabled")
 
             if 'tls_path_to_ca' in config['MQTT'] and config['MQTT']['tls_path_to_ca'] != '':
-                logging.debug("MQTT client: TLS: custom ca \"%s\" used" % config['MQTT']['tls_path_to_ca'])
+                logging.info("MQTT client: TLS: custom ca %s used" % config['MQTT']['tls_path_to_ca'])
                 client.tls_set(config['MQTT']['tls_path_to_ca'], tls_version=2)
             else:
                 client.tls_set(tls_version=2)
 
             if 'tls_insecure' in config['MQTT'] and config['MQTT']['tls_insecure'] != '':
-                logging.debug("MQTT client: TLS certificate server hostname verification disabled")
+                logging.info("MQTT client: TLS certificate server hostname verification disabled")
                 client.tls_insecure_set(True)
 
         # check if username and password are set
         if 'username' in config['MQTT'] and 'password' in config['MQTT'] and config['MQTT']['username'] != '' and config['MQTT']['password'] != '':
-            logging.debug("MQTT client: Using username \"%s\" and password to connect" % config['MQTT']['username'])
+            logging.info("MQTT client: Using username %s and password to connect" % config['MQTT']['username'])
             client.username_pw_set(username=config['MQTT']['username'], password=config['MQTT']['password'])
 
          # connect to broker
@@ -1127,7 +1146,7 @@ def main():
         fetch_production_historic()
         logging.info("--> fetch_handler() --> fetch_production_historic(): JSON data feched. Wait %s seconds for next run" % fetch_production_historic_interval)
     except Exception as e:
-        logging.error('--> fetch_handler() --> fetch_production_historic(): Exception occurred: \"%s\". Try again in %s seconds' % (e, fetch_production_historic_interval))
+        logging.error("--> fetch_handler() --> fetch_production_historic(): Exception occurred: %s. Try again in %s seconds" % (e, fetch_production_historic_interval))
 
     # fetch data for the first time alse MQTT outputs an empty status once
     if fetch_devices_enabled == 1:
@@ -1136,7 +1155,7 @@ def main():
             fetch_devices()
             logging.info("--> fetch_handler() --> fetch_devices(): JSON data feched. Wait %s seconds for next run" % fetch_devices_interval)
         except Exception as e:
-            logging.error('--> fetch_handler() --> fetch_devices(): Exception occurred: \"%s\". Try again in %s seconds' % (e, fetch_devices_interval))
+            logging.error("--> fetch_handler() --> fetch_devices(): Exception occurred: %s. Try again in %s seconds" % (e, fetch_devices_interval))
 
     if fetch_inverters_enabled == 1:
         fetch_inverters_last = time_now
@@ -1144,7 +1163,7 @@ def main():
             fetch_inverters()
             logging.info("--> fetch_handler() --> fetch_inverters(): JSON data feched. Wait %s seconds for next run" % fetch_inverters_interval)
         except Exception as e:
-            logging.error('--> fetch_handler() --> fetch_inverters(): Exception occurred: \"%s\". Try again in %s seconds' % (e, fetch_inverters_interval))
+            logging.error("--> fetch_handler() --> fetch_inverters(): Exception occurred: %s. Try again in %s seconds" % (e, fetch_inverters_interval))
 
     if fetch_events_enabled == 1:
         fetch_events_last = time_now
@@ -1152,7 +1171,7 @@ def main():
             fetch_events()
             logging.info("--> fetch_handler() --> fetch_events(): JSON data feched. Wait %s seconds for next run" % fetch_events_interval)
         except Exception as e:
-            logging.error('--> fetch_handler() --> fetch_events(): Exception occurred: \"%s\". Try again in %s seconds' % (e, fetch_events_interval))
+            logging.error("--> fetch_handler() --> fetch_events(): Exception occurred: %s. Try again in %s seconds" % (e, fetch_events_interval))
 
 
 
@@ -1174,9 +1193,22 @@ def main():
 
 
     # wait to fetch first data, else dbus initialisation for phase count is wrong
+    i = 0
     while not bool(data_meter_stream):
         time.sleep(1)
-        logging.info('--> data_meter_stream not yet ready')
+        if i < 10:
+            logging.info("--> data_meter_stream not yet ready")
+        else:
+            logging.warning(
+                (
+                    "--> data_meter_stream not yet ready.\n" +
+                    "Try accessing http://%s/stream/meter from your PC with the Envoy-S installer credentials and see,\n" +
+                    "if it downloads a file with JSON content (one JSON per line). When it's working like expected you have\n" +
+                    "to interrupt the download after a few seconds, since the Envoy-S is streaming the data."
+                )
+                % config['ENVOY']['address']
+            )
+        i += 1
 
     #formatting
     _kwh = lambda p, v: (str(round(v, 2)) + 'kWh')
@@ -1228,7 +1260,7 @@ def main():
         hardware=hardware
     )
 
-    logging.info('Connected to dbus and switching over to GLib.MainLoop() (= event based)')
+    logging.info("Connected to dbus and switching over to GLib.MainLoop() (= event based)")
     mainloop = GLib.MainLoop()
     mainloop.run()
 
