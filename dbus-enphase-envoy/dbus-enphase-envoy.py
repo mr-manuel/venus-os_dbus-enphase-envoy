@@ -87,7 +87,7 @@ if 'DATA' in config and 'fetch_inverters' in config['DATA'] and config['DATA']['
         fetch_inverters_publishing_type = 1
 else:
     fetch_inverters_enabled = 0
-    fetch_inverters_interval = 60
+    fetch_inverters_interval = 300
     fetch_inverters_publishing_type = 0
 
 # check if fetch_events is enabled in config
