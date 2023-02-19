@@ -157,7 +157,8 @@ def on_publish(client, userdata, rc):
 def fetch_meter_stream():
     logging.debug("step: fetch_meter_stream")
 
-    global config, data_meter_stream, data_production_historic, keep_running
+    global config, keep_running,\
+        data_meter_stream, data_production_historic
 
     marker = b'data: '
 
@@ -198,14 +199,14 @@ def fetch_meter_stream():
         try:
 
             url = 'http://%s/stream/meter' % config['ENVOY']['address']
-            stream = requests.get(
+            response = requests.get(
                 url,
                 auth=HTTPDigestAuth('installer', config['ENVOY']['password']),
                 stream=True,
                 timeout=5
             )
 
-            for line in stream.iter_lines():
+            for line in response.iter_lines():
 
                 if keep_running == False:
                     logging.info('--> fetch_meter_stream(): got exit signal')
@@ -591,11 +592,18 @@ def fetch_production_historic():
     try:
 
         url = 'http://%s/production.json?details=1' % config['ENVOY']['address']
-        data = requests.get(url, timeout=5).json()
+
+
+        response = requests.get(
+            url,
+            timeout=60
+        )
+        if response.elapsed.total_seconds() > 5:
+            logging.warning('--> fetch_production_historic(): HTTP request took longer than 5 seconds: %s seconds' % response.elapsed.total_seconds())
 
         total_jsonpayload = {}
 
-        for meter in data.values():
+        for meter in response.json().values():
 
             for content in meter:
 
@@ -639,6 +647,15 @@ def fetch_production_historic():
         # make fetched data globally available
         data_production_historic = total_jsonpayload
 
+    except requests.exceptions.ConnectTimeout as e:
+        logging.error('--> fetch_production_historic(): ConnectTimeout occurred: \"%s\"' % e)
+
+    except requests.exceptions.ReadTimeout as e:
+        logging.error('--> fetch_production_historic(): ReadTimeout occurred: \"%s\"' % e)
+
+    except requests.exceptions.Timeout as e:
+        logging.error('--> fetch_production_historic(): Timeout occurred: \"%s\"' % e)
+
     except Exception as e:
         logging.error('--> fetch_production_historic(): Exception occurred: \"%s\"' % e)
         keep_running = False
@@ -653,11 +670,16 @@ def fetch_devices():
     try:
 
         url = 'http://%s/inventory.json' % config['ENVOY']['address']
-        data = requests.get(url, timeout=5).json()
+        response = requests.get(
+            url,
+            timeout=60
+        )
+        if response.elapsed.total_seconds() > 5:
+            logging.warning('--> fetch_devices(): HTTP request took longer than 5 seconds: %s seconds' % response.elapsed.total_seconds())
 
         total_jsonpayload = {}
 
-        for device_type in data:
+        for device_type in response.json():
 
             device_name = reduce(lambda a, kv: a.replace(*kv), replace_devices, device_type['type'])
 
@@ -686,6 +708,15 @@ def fetch_devices():
         # make fetched data globally available
         data_devices = total_jsonpayload
 
+    except requests.exceptions.ConnectTimeout as e:
+        logging.error('--> fetch_production_historic(): ConnectTimeout occurred: \"%s\"' % e)
+
+    except requests.exceptions.ReadTimeout as e:
+        logging.error('--> fetch_production_historic(): ReadTimeout occurred: \"%s\"' % e)
+
+    except requests.exceptions.Timeout as e:
+        logging.error('--> fetch_production_historic(): Timeout occurred: \"%s\"' % e)
+
     except Exception as e:
         logging.error('--> fetch_devices(): Exception occurred: \"%s\"' % e)
         keep_running = False
@@ -700,11 +731,17 @@ def fetch_inverters():
     try:
 
         url = 'http://%s/api/v1/production/inverters' % config['ENVOY']['address']
-        data = requests.get(url, auth=HTTPDigestAuth('installer', config['ENVOY']['password'])).json()
+        response = requests.get(
+            url,
+            timeout=60,
+            auth=HTTPDigestAuth('installer', config['ENVOY']['password'])
+        )
+        if response.elapsed.total_seconds() > 5:
+            logging.warning('--> fetch_inverters(): HTTP request took longer than 5 seconds: %s seconds' % response.elapsed.total_seconds())
 
         total_jsonpayload = {}
 
-        for inverter in data:
+        for inverter in response.json():
 
             total_jsonpayload.update({
                 inverter['serialNumber']: {
@@ -715,6 +752,15 @@ def fetch_inverters():
 
         # make fetched data globally available
         data_inverters = total_jsonpayload
+
+    except requests.exceptions.ConnectTimeout as e:
+        logging.error('--> fetch_production_historic(): ConnectTimeout occurred: \"%s\"' % e)
+
+    except requests.exceptions.ReadTimeout as e:
+        logging.error('--> fetch_production_historic(): ReadTimeout occurred: \"%s\"' % e)
+
+    except requests.exceptions.Timeout as e:
+        logging.error('--> fetch_production_historic(): Timeout occurred: \"%s\"' % e)
 
     except Exception as e:
         logging.error('--> fetch_inverters(): Exception occurred: \"%s\"' % e)
@@ -730,11 +776,16 @@ def fetch_events():
     try:
 
         url = 'http://%s/datatab/event_dt.rb?start=0&length=10' % config['ENVOY']['address']
-        data = requests.get(url, timeout=5).json()
+        response = requests.get(
+            url,
+            timeout=60
+        )
+        if response.elapsed.total_seconds() > 5:
+            logging.warning('--> fetch_events(): HTTP request took longer than 5 seconds: %s seconds' % response.elapsed.total_seconds())
 
         total_jsonpayload = {}
 
-        for event in data['aaData']:
+        for event in response.json()['aaData']:
 
             total_jsonpayload.update({
                 event[0]: {
@@ -748,6 +799,15 @@ def fetch_events():
         # make fetched data globally available
         data_events = total_jsonpayload
 
+    except requests.exceptions.ConnectTimeout as e:
+        logging.error('--> fetch_production_historic(): ConnectTimeout occurred: \"%s\"' % e)
+
+    except requests.exceptions.ReadTimeout as e:
+        logging.error('--> fetch_production_historic(): ReadTimeout occurred: \"%s\"' % e)
+
+    except requests.exceptions.Timeout as e:
+        logging.error('--> fetch_production_historic(): Timeout occurred: \"%s\"' % e)
+
     except Exception as e:
         logging.error('--> fetch_events(): Exception occurred: \"%s\"' % e)
         keep_running = False
@@ -759,10 +819,9 @@ def fetch_handler():
 
     global config, keep_running, fetch_production_historic_interval, fetch_devices_interval, fetch_inverters_interval, fetch_events_interval
 
-    fetch_production_historic_last = 0
-    fetch_devices_last = 0
-    fetch_inverters_last = 0
-    fetch_events_last = 0
+    global config, keep_running, \
+        fetch_production_historic_interval, fetch_devices_interval, fetch_inverters_interval, fetch_events_interval, \
+        fetch_production_historic_last, fetch_devices_last, fetch_inverters_last, fetch_events_last
 
     while 1:
 
@@ -811,7 +870,8 @@ def fetch_handler():
 def publish_mqtt_data():
     logging.debug("step: publish_mqtt_data")
 
-    global client, config, keep_running, data_meter_stream, data_devices, data_inverters, data_events
+    global client, config, keep_running, \
+        data_meter_stream, data_devices, data_inverters, data_events
 
     data_previous_meter_stream = {}
     data_previous_devices = {}
@@ -1013,7 +1073,8 @@ class DbusEnphaseEnvoyPvService:
 
 
 def main():
-    global client, data_production_historic
+    global client, \
+        fetch_production_historic_last, fetch_devices_last, fetch_inverters_last, fetch_events_last
 
     _thread.daemon = True # allow the program to quit
 
@@ -1058,19 +1119,41 @@ def main():
 
 
     ## Enphase Envoy-S
+    time_now = int(time.time())
+
     # fetch data for the first time to be able to use it in fetch_meter_stream()
-    fetch_production_historic()
-    logging.info("--> fetch_production_historic(): JSON production historic data feched")
+    fetch_production_historic_last = time_now
+    try:
+        fetch_production_historic()
+        logging.info("--> fetch_handler() --> fetch_production_historic(): JSON data feched. Wait %s seconds for next run" % fetch_production_historic_interval)
+    except Exception as e:
+        logging.error('--> fetch_handler() --> fetch_production_historic(): Exception occurred: \"%s\". Try again in %s seconds' % (e, fetch_production_historic_interval))
 
     # fetch data for the first time alse MQTT outputs an empty status once
     if fetch_devices_enabled == 1:
-        fetch_devices()
+        fetch_devices_last = time_now
+        try:
+            fetch_devices()
+            logging.info("--> fetch_handler() --> fetch_devices(): JSON data feched. Wait %s seconds for next run" % fetch_devices_interval)
+        except Exception as e:
+            logging.error('--> fetch_handler() --> fetch_devices(): Exception occurred: \"%s\". Try again in %s seconds' % (e, fetch_devices_interval))
 
     if fetch_inverters_enabled == 1:
-        fetch_inverters()
+        fetch_inverters_last = time_now
+        try:
+            fetch_inverters()
+            logging.info("--> fetch_handler() --> fetch_inverters(): JSON data feched. Wait %s seconds for next run" % fetch_inverters_interval)
+        except Exception as e:
+            logging.error('--> fetch_handler() --> fetch_inverters(): Exception occurred: \"%s\". Try again in %s seconds' % (e, fetch_inverters_interval))
 
     if fetch_events_enabled == 1:
-        fetch_events()
+        fetch_events_last = time_now
+        try:
+            fetch_events()
+            logging.info("--> fetch_handler() --> fetch_events(): JSON data feched. Wait %s seconds for next run" % fetch_events_interval)
+        except Exception as e:
+            logging.error('--> fetch_handler() --> fetch_events(): Exception occurred: \"%s\". Try again in %s seconds' % (e, fetch_events_interval))
+
 
 
     # start threat for fetching data every x seconds in background
