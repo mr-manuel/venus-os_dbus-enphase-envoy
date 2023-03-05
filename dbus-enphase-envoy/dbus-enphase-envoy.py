@@ -613,8 +613,6 @@ def fetch_production_historic():
     try:
 
         url = 'http://%s/production.json?details=1' % config['ENVOY']['address']
-
-
         response = requests.get(
             url,
             timeout=60

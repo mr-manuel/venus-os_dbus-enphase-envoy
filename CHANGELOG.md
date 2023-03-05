@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.1.2
+* Added: Better error handling for secondary requests
+* Added: Don't send 0 values on first run
+* Added: Set logging level in `config.default.ini`
+* Added: Warning message, if a HTTP request took more than 5 s
+* Added: Warning message, if stream data is not ready after 15 s
+* Changed: Default settings in `config.default.ini`
+* Changed: Fetch inverters - Default interval from 60 s to 300 s
+* Changed: Fetch inverters - Minimum interval from 5 s to 60 s
+* Changed: HTTP request timeout from 5 s to 60 s for secondary requests
+* Changed: Logging levels of different messages for clearer output
+
 ## v0.1.1
 * Added: Better error handling
 * Added: If PV power is below 5 W, than show 0 W. This prevents showing 1-2 W on PV when no sun is shining and during night
