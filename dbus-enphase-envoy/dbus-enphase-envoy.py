@@ -1195,19 +1195,22 @@ def main():
     # wait to fetch first data, else dbus initialisation for phase count is wrong
     i = 0
     while not bool(data_meter_stream):
-        time.sleep(1)
-        if i < 10:
+        if i % 15 != 0 or i == 0:
             logging.info("--> data_meter_stream not yet ready")
         else:
             logging.warning(
                 (
-                    "--> data_meter_stream not yet ready.\n" +
+                    "--> data_meter_stream not yet ready after %s seconds.\n" +
                     "Try accessing http://%s/stream/meter from your PC with the Envoy-S installer credentials and see,\n" +
                     "if it downloads a file with JSON content (one JSON per line). When it's working like expected you have\n" +
                     "to interrupt the download after a few seconds, since the Envoy-S is streaming the data."
                 )
-                % config['ENVOY']['address']
+                % (
+                    str(i),
+                    config['ENVOY']['address']
+                )
             )
+        time.sleep(1)
         i += 1
 
     #formatting
