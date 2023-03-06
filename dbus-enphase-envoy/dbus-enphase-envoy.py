@@ -27,10 +27,12 @@ try:
     config = configparser.ConfigParser()
     config.read("%s/config.ini" % (os.path.dirname(os.path.realpath(__file__))))
     if (config['ENVOY']['address'] == "IP_ADDR_OR_FQDN"):
-        print("ERROR:config.ini file is using invalid default values like IP_ADDR_OR_FQDN")
+        print("ERROR:config.ini file is using invalid default values like IP_ADDR_OR_FQDN. The driver restarts in 60 seconds.")
+        time.sleep(60)
         sys.exit()
 except:
-    print("ERROR:config.ini file not found. Copy or rename the config.sample.ini to config.ini")
+    print("ERROR:config.ini file not found. Copy or rename the config.sample.ini to config.ini. The driver restarts in 60 seconds.")
+    time.sleep(60)
     sys.exit()
 
 
