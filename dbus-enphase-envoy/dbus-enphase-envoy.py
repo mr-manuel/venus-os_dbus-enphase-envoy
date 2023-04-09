@@ -214,6 +214,8 @@ def fetch_meter_stream():
     else:
         json_data = {}
 
+    error_count = 0
+
     while 1:
 
         try:
@@ -225,6 +227,9 @@ def fetch_meter_stream():
                 stream=True,
                 timeout=5
             )
+
+            # reset error count
+            error_count = 0
 
             for line in response.iter_lines():
 
@@ -601,8 +606,29 @@ def fetch_meter_stream():
                     # make fetched data globally available
                     data_meter_stream = total_jsonpayload
 
+        except requests.exceptions.ConnectTimeout as e:
+            logging.error("--> fetch_meter_stream(): ConnectTimeout occurred: %s" % e)
+            error_count += 1
+            time.sleep(1)
+
+        except requests.exceptions.ReadTimeout as e:
+            logging.error("--> fetch_meter_stream(): ReadTimeout occurred: %s" % e)
+            error_count += 1
+            time.sleep(1)
+
+        except requests.exceptions.Timeout as e:
+            logging.error("--> fetch_meter_stream(): Timeout occurred: %s" % e)
+            error_count += 1
+            time.sleep(1)
+
         except Exception as e:
             logging.error("--> fetch_meter_stream(): Exception occurred: %s" % e)
+            error_count += 1
+            time.sleep(1)
+
+        # stopping driver, if error count is exceeded
+        if error_count >= 5:
+            logging.error("--> fetch_meter_stream(): %s errors accured. Stopping driver..." % error_count)
             keep_running = False
             sys.exit()
 
@@ -730,13 +756,13 @@ def fetch_devices():
         data_devices = total_jsonpayload
 
     except requests.exceptions.ConnectTimeout as e:
-        logging.error("--> fetch_production_historic(): ConnectTimeout occurred: %s" % e)
+        logging.error("--> fetch_devices(): ConnectTimeout occurred: %s" % e)
 
     except requests.exceptions.ReadTimeout as e:
-        logging.error("--> fetch_production_historic(): ReadTimeout occurred: %s" % e)
+        logging.error("--> fetch_devices(): ReadTimeout occurred: %s" % e)
 
     except requests.exceptions.Timeout as e:
-        logging.error("--> fetch_production_historic(): Timeout occurred: %s" % e)
+        logging.error("--> fetch_devices(): Timeout occurred: %s" % e)
 
     except Exception as e:
         logging.error("--> fetch_devices(): Exception occurred: %s" % e)
@@ -775,13 +801,13 @@ def fetch_inverters():
         data_inverters = total_jsonpayload
 
     except requests.exceptions.ConnectTimeout as e:
-        logging.error("--> fetch_production_historic(): ConnectTimeout occurred: %s" % e)
+        logging.error("--> fetch_inverters(): ConnectTimeout occurred: %s" % e)
 
     except requests.exceptions.ReadTimeout as e:
-        logging.error("--> fetch_production_historic(): ReadTimeout occurred: %s" % e)
+        logging.error("--> fetch_inverters(): ReadTimeout occurred: %s" % e)
 
     except requests.exceptions.Timeout as e:
-        logging.error("--> fetch_production_historic(): Timeout occurred: %s" % e)
+        logging.error("--> fetch_inverters(): Timeout occurred: %s" % e)
 
     except Exception as e:
         logging.error("--> fetch_inverters(): Exception occurred: %s" % e)
@@ -821,13 +847,13 @@ def fetch_events():
         data_events = total_jsonpayload
 
     except requests.exceptions.ConnectTimeout as e:
-        logging.error("--> fetch_production_historic(): ConnectTimeout occurred: %s" % e)
+        logging.error("--> fetch_events(): ConnectTimeout occurred: %s" % e)
 
     except requests.exceptions.ReadTimeout as e:
-        logging.error("--> fetch_production_historic(): ReadTimeout occurred: %s" % e)
+        logging.error("--> fetch_events(): ReadTimeout occurred: %s" % e)
 
     except requests.exceptions.Timeout as e:
-        logging.error("--> fetch_production_historic(): Timeout occurred: %s" % e)
+        logging.error("--> fetch_events(): Timeout occurred: %s" % e)
 
     except Exception as e:
         logging.error("--> fetch_events(): Exception occurred: %s" % e)
@@ -1021,7 +1047,7 @@ class DbusEnphaseEnvoyPvService:
         self._dbusservice.add_path('/ProductId', 0xFFFF)
         self._dbusservice.add_path('/ProductName', productname)
         self._dbusservice.add_path('/CustomName', productname)
-        self._dbusservice.add_path('/FirmwareVersion', '0.1.2')
+        self._dbusservice.add_path('/FirmwareVersion', '0.1.3 (20230409)')
         self._dbusservice.add_path('/HardwareVersion', hardware)
         self._dbusservice.add_path('/Connected', 1)
 
@@ -1195,7 +1221,7 @@ def main():
     # wait to fetch first data, else dbus initialisation for phase count is wrong
     i = 0
     while not bool(data_meter_stream):
-        if i % 15 != 0 or i == 0:
+        if i % 60 != 0 or i == 0:
             logging.info("--> data_meter_stream not yet ready")
         else:
             logging.warning(
@@ -1210,6 +1236,11 @@ def main():
                     config['ENVOY']['address']
                 )
             )
+
+        if keep_running == False:
+            logging.info("--> wait for first data: got exit signal")
+            sys.exit()
+
         time.sleep(1)
         i += 1
 
