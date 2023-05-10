@@ -409,3 +409,10 @@ It was tested on Venus OS Large `v2.92` on the following devices:
 ![Pv power L1, L2, L3 - device list - enphase envoy 2](/screenshots/pv_power_L3_L2_L1_device-list_enphase-envoy-2.png)
 
 </details>
+
+
+## Supporting/Sponsoring this project
+
+You like the project and you want to support me?
+
+[<img src="https://github.md0.eu/uploads/donate-button.svg" height="50">](https://www.paypal.com/donate/?hosted_button_id=3NEVZBDM5KABW)
