@@ -1,15 +1,14 @@
 #!/usr/bin/env python
 
-from gi.repository import GLib
+from gi.repository import GLib  # pyright: ignore[reportMissingImports]
 import platform
 import logging
 import sys
 import os
-from os import path
-import time
+from time import sleep, time
 import json
 import paho.mqtt.client as mqtt
-import configparser # for config/ini file
+import configparser  # for config/ini file
 import _thread
 
 import threading
@@ -24,15 +23,26 @@ from vedbus import VeDbusService
 
 # get values from config.ini file
 try:
-    config = configparser.ConfigParser()
-    config.read("%s/config.ini" % (os.path.dirname(os.path.realpath(__file__))))
-    if (config['ENVOY']['address'] == "IP_ADDR_OR_FQDN"):
-        print("ERROR:config.ini file is using invalid default values like IP_ADDR_OR_FQDN. The driver restarts in 60 seconds.")
-        time.sleep(60)
+    config_file = (os.path.dirname(os.path.realpath(__file__))) + "/config.ini"
+    if os.path.exists(config_file):
+        config = configparser.ConfigParser()
+        config.read(config_file)
+        if (config['ENVOY']['address'] == "IP_ADDR_OR_FQDN"):
+            print("ERROR:The \"config.ini\" is using invalid default values like IP_ADDR_OR_FQDN. The driver restarts in 60 seconds.")
+            sleep(60)
+            sys.exit()
+    else:
+        print("ERROR:The \"" + config_file + "\" is not found. Did you copy or rename the \"config.sample.ini\" to \"config.ini\"? The driver restarts in 60 seconds.")
+        sleep(60)
         sys.exit()
-except:
-    print("ERROR:config.ini file not found. Copy or rename the config.sample.ini to config.ini. The driver restarts in 60 seconds.")
-    time.sleep(60)
+
+except Exception:
+    exception_type, exception_object, exception_traceback = sys.exc_info()
+    file = exception_traceback.tb_frame.f_code.co_filename
+    line = exception_traceback.tb_lineno
+    print(f"Exception occurred: {repr(exception_object)} of type {exception_type} in {file} line #{line}")
+    print("ERROR:The driver restarts in 60 seconds.")
+    sleep(60)
     sys.exit()
 
 
@@ -151,13 +161,17 @@ def on_disconnect(client, userdata, rc):
     else:
         logging.warning("MQTT client: rc value:" + str(rc))
 
-    try:
-        logging.warning("MQTT client: Trying to reconnect")
-        client.connect(config['MQTT']['broker_address'])
-        connected = 1
-    except Exception as e:
-        logging.error("MQTT client: Error in retrying to connect with broker: %s" % e)
-        connected = 0
+    while connected == 0:
+        try:
+            logging.warning("MQTT client: Trying to reconnect")
+            client.connect(config['MQTT']['broker_address'])
+            connected = 1
+        except Exception as err:
+            logging.error(f"MQTT client: Error in retrying to connect with broker ({config['MQTT']['broker_address']}:{config['MQTT']['broker_port']}): {err}")
+            logging.error("MQTT client: Retrying in 15 seconds")
+            connected = 0
+            sleep(15)
+
 
 def on_connect(client, userdata, flags, rc):
     global connected
@@ -166,6 +180,7 @@ def on_connect(client, userdata, flags, rc):
         connected = 1
     else:
         logging.error("MQTT client: Failed to connect, return code %d\n", rc)
+
 
 def on_publish(client, userdata, rc):
     pass
@@ -182,7 +197,7 @@ def fetch_meter_stream():
 
     # create dictionary for later to count watt hours
     data_watt_hours = {
-        'time_creation': round(time.time(), 0),
+        'time_creation': round(time(), 0),
         'count': 0
     }
     # calculate and save watthours after every x seconds
@@ -194,18 +209,18 @@ def fetch_meter_stream():
     # file to save many writing operations (best on ramdisk to not wear SD card)
     data_watt_hours_working_file = '/var/volatile/tmp/dbus-enphase-envoy_data_watt_hours.json'
     # get last modification timestamp
-    timestamp_storage_file = os.path.getmtime(data_watt_hours_storage_file) if path.isfile(data_watt_hours_storage_file) else 0
+    timestamp_storage_file = os.path.getmtime(data_watt_hours_storage_file) if os.path.isfile(data_watt_hours_storage_file) else 0
 
-    ## load data to prevent sending 0 watthours for grid before the first loop
+    # load data to prevent sending 0 watthours for grid before the first loop
     # check if file in volatile storage exists
-    if path.isfile(data_watt_hours_working_file):
+    if os.path.isfile(data_watt_hours_working_file):
         with open(data_watt_hours_working_file, 'r') as file:
             file = open(data_watt_hours_working_file, "r")
             json_data = json.load(file)
             logging.info("Loaded JSON for energy forward/reverse once")
             logging.debug(json.dumps(json_data))
     # if not, check if file in persistent storage exists
-    elif path.isfile(data_watt_hours_storage_file):
+    elif os.path.isfile(data_watt_hours_storage_file):
         with open(data_watt_hours_storage_file, 'r') as file:
             file = open(data_watt_hours_storage_file, "r")
             json_data = json.load(file)
@@ -233,7 +248,7 @@ def fetch_meter_stream():
 
             for line in response.iter_lines():
 
-                if keep_running == False:
+                if keep_running is False:
                     logging.info("--> fetch_meter_stream(): got exit signal")
                     sys.exit()
 
@@ -241,7 +256,7 @@ def fetch_meter_stream():
                     data = json.loads(line.replace(marker, b''))
 
                     # set timestamp when line is read
-                    timestamp = round(time.time(), 0)
+                    timestamp = round(time(), 0)
                     total_jsonpayload = {}
 
                     for meter in ['production', 'net-consumption', 'total-consumption']:
@@ -250,10 +265,10 @@ def fetch_meter_stream():
 
                         jsonpayload = {}
 
-                        total_power           = 0
-                        total_current         = 0
-                        total_voltage         = 0
-                        total_power_react     = 0
+                        total_power = 0
+                        total_current = 0
+                        total_voltage = 0
+                        total_power_react = 0
                         total_power_appearent = 0
 
                         for phase in ['ph-a', 'ph-b', 'ph-c']:
@@ -262,10 +277,10 @@ def fetch_meter_stream():
 
                             if data[meter][phase]['v'] > 0:
 
-                                total_power           += float(data[meter][phase]['p'])
-                                total_current         += float(data[meter][phase]['i'])
-                                total_voltage         += float(data[meter][phase]['v'])
-                                total_power_react     += float(data[meter][phase]['q'])
+                                total_power += float(data[meter][phase]['p'])
+                                total_current += float(data[meter][phase]['i'])
+                                total_voltage += float(data[meter][phase]['v'])
+                                total_power_react += float(data[meter][phase]['q'])
                                 total_power_appearent += float(data[meter][phase]['s'])
 
                                 # if PV power is below 5 W, than show 0 W. This prevents showing 1-2 W on PV when no sun is shining
@@ -342,8 +357,7 @@ def fetch_meter_stream():
 
                         total_jsonpayload.update({meter_name: jsonpayload})
 
-
-                    ### calculate watthours
+                    # # # calculate watthours
                     # measure power and calculate watthours, since enphase provides only watthours for production/import/consumption and no export
                     # divide import and export from grid
                     grid_power_forward = total_jsonpayload['grid']['power'] if total_jsonpayload['grid']['power'] > 0 else 0
@@ -371,30 +385,36 @@ def fetch_meter_stream():
                         if 'L1' in total_jsonpayload['grid']:
                             data_watt_hours_grid.update({
                                 'L1': {
-                                    'energy_forward': round(data_watt_hours['grid']['L1']['energy_forward'] + grid_L1_power_forward if 'grid' in data_watt_hours and 'L1' in data_watt_hours['grid'] else grid_L1_power_forward, 3),
-                                    'energy_reverse': round(data_watt_hours['grid']['L1']['energy_reverse'] + grid_L1_power_reverse if 'grid' in data_watt_hours and 'L1' in data_watt_hours['grid'] else grid_L1_power_reverse, 3),
+                                    'energy_forward': round(data_watt_hours['grid']['L1']['energy_forward']
+                                                        + grid_L1_power_forward if 'grid' in data_watt_hours and 'L1' in data_watt_hours['grid'] else grid_L1_power_forward, 3),
+                                    'energy_reverse': round(data_watt_hours['grid']['L1']['energy_reverse']
+                                                        + grid_L1_power_reverse if 'grid' in data_watt_hours and 'L1' in data_watt_hours['grid'] else grid_L1_power_reverse, 3),
                                 }
                             })
                         if 'L2' in total_jsonpayload['grid']:
                             data_watt_hours_grid.update({
                                 'L2': {
-                                    'energy_forward': round(data_watt_hours['grid']['L2']['energy_forward'] + grid_L2_power_forward if 'grid' in data_watt_hours and 'L2' in data_watt_hours['grid'] else grid_L2_power_forward, 3),
-                                    'energy_reverse': round(data_watt_hours['grid']['L2']['energy_reverse'] + grid_L2_power_reverse if 'grid' in data_watt_hours and 'L2' in data_watt_hours['grid'] else grid_L2_power_reverse, 3),
+                                    'energy_forward': round(data_watt_hours['grid']['L2']['energy_forward']
+                                                        + grid_L2_power_forward if 'grid' in data_watt_hours and 'L2' in data_watt_hours['grid'] else grid_L2_power_forward, 3),
+                                    'energy_reverse': round(data_watt_hours['grid']['L2']['energy_reverse']
+                                                        + grid_L2_power_reverse if 'grid' in data_watt_hours and 'L2' in data_watt_hours['grid'] else grid_L2_power_reverse, 3),
                                 }
                             })
                         if 'L3' in total_jsonpayload['grid']:
                             data_watt_hours_grid.update({
                                 'L3': {
-                                    'energy_forward': round(data_watt_hours['grid']['L3']['energy_forward'] + grid_L3_power_forward if 'grid' in data_watt_hours and 'L3' in data_watt_hours['grid'] else grid_L3_power_forward, 3),
-                                    'energy_reverse': round(data_watt_hours['grid']['L3']['energy_reverse'] + grid_L3_power_reverse if 'grid' in data_watt_hours and 'L3' in data_watt_hours['grid'] else grid_L3_power_reverse, 3),
+                                    'energy_forward': round(data_watt_hours['grid']['L3']['energy_forward']
+                                                        + grid_L3_power_forward if 'grid' in data_watt_hours and 'L3' in data_watt_hours['grid'] else grid_L3_power_forward, 3),
+                                    'energy_reverse': round(data_watt_hours['grid']['L3']['energy_reverse']
+                                                        + grid_L3_power_reverse if 'grid' in data_watt_hours and 'L3' in data_watt_hours['grid'] else grid_L3_power_reverse, 3),
                                 }
                             })
 
                         data_watt_hours.update({
-                            ## if PV not needed it can be removed, yet to evaluate
-                            #'pv': {
-                            #    'energy_forward': round(data_watt_hours['pv']['energy_forward'] + total_jsonpayload['pv']['power'], 3),
-                            #},
+                            # if PV not needed it can be removed, yet to evaluate
+                            # 'pv': {
+                            #     'energy_forward': round(data_watt_hours['pv']['energy_forward'] + total_jsonpayload['pv']['power'], 3),
+                            # },
                             'grid': data_watt_hours_grid,
                             'count': data_watt_hours['count'] + 1,
 
@@ -405,7 +425,7 @@ def fetch_meter_stream():
                     # build mean, calculate time diff and Wh and write to file
                     else:
                         # check if file in volatile storage exists
-                        if path.isfile(data_watt_hours_working_file):
+                        if os.path.isfile(data_watt_hours_working_file):
                             with open(data_watt_hours_working_file, 'r') as file:
                                 file = open(data_watt_hours_working_file, "r")
                                 data_watt_hours_old = json.load(file)
@@ -413,7 +433,7 @@ def fetch_meter_stream():
                                 logging.debug(json.dumps(data_watt_hours_old))
 
                         # if not, check if file in persistent storage exists
-                        elif path.isfile(data_watt_hours_storage_file):
+                        elif os.path.isfile(data_watt_hours_storage_file):
                             with open(data_watt_hours_storage_file, 'r') as file:
                                 file = open(data_watt_hours_storage_file, "r")
                                 data_watt_hours_old = json.load(file)
@@ -448,10 +468,10 @@ def fetch_meter_stream():
                                     }
                                 })
                             data_watt_hours_old = {
-                                ## if PV not needed it can be removed, yet to evaluate
-                                #'pv': {
-                                #    'energy_forward': 0,
-                                #},
+                                # if PV not needed it can be removed, yet to evaluate
+                                # 'pv': {
+                                #     'energy_forward': 0,
+                                # },
                                 'grid': data_watt_hours_old_grid
                             }
                             logging.info("Generated JSON")
@@ -460,7 +480,7 @@ def fetch_meter_stream():
                         # factor to calculate Watthours: mean power * measuuring period / 3600 seconds (1 hour)
                         factor = (timestamp - data_watt_hours['time_creation']) / 3600
 
-                        #pv_energy_forward   = data_watt_hours_old['pv']['energy_forward'] + (data_watt_hours['pv']['energy_forward'] / data_watt_hours['count'] * factor)
+                        # pv_energy_forward   = data_watt_hours_old['pv']['energy_forward'] + (data_watt_hours['pv']['energy_forward'] / data_watt_hours['count'] * factor)
                         grid_energy_forward = round(data_watt_hours_old['grid']['energy_forward'] + (data_watt_hours['grid']['energy_forward'] / data_watt_hours['count'] * factor)/1000, 3)
                         grid_energy_reverse = round(data_watt_hours_old['grid']['energy_reverse'] + (data_watt_hours['grid']['energy_reverse'] / data_watt_hours['count'] * factor)/1000, 3)
 
@@ -475,7 +495,7 @@ def fetch_meter_stream():
                             'energy_reverse': grid_energy_reverse,
                         }
 
-                        ### L1
+                        # # # L1
                         if 'L1' in data_watt_hours_old['grid'] and 'L1' in data_watt_hours['grid']:
                             grid_L1_energy_forward = round(data_watt_hours_old['grid']['L1']['energy_forward'] + (data_watt_hours['grid']['L1']['energy_forward'] / data_watt_hours['count'] * factor)/1000, 3)
                             grid_L1_energy_reverse = round(data_watt_hours_old['grid']['L1']['energy_reverse'] + (data_watt_hours['grid']['L1']['energy_reverse'] / data_watt_hours['count'] * factor)/1000, 3)
@@ -498,7 +518,7 @@ def fetch_meter_stream():
                                 }
                             })
 
-                        ### L2
+                        # # # L2
                         if 'L2' in data_watt_hours_old['grid'] and 'L2' in data_watt_hours['grid']:
                             grid_L2_energy_forward = round(data_watt_hours_old['grid']['L2']['energy_forward'] + (data_watt_hours['grid']['L2']['energy_forward'] / data_watt_hours['count'] * factor)/1000, 3)
                             grid_L2_energy_reverse = round(data_watt_hours_old['grid']['L2']['energy_reverse'] + (data_watt_hours['grid']['L2']['energy_reverse'] / data_watt_hours['count'] * factor)/1000, 3)
@@ -521,7 +541,7 @@ def fetch_meter_stream():
                                 }
                             })
 
-                        ### L3
+                        # # # L3
                         if 'L3' in data_watt_hours_old['grid'] and 'L3' in data_watt_hours['grid']:
                             grid_L3_energy_forward = round(data_watt_hours_old['grid']['L3']['energy_forward'] + (data_watt_hours['grid']['L3']['energy_forward'] / data_watt_hours['count'] * factor)/1000, 3)
                             grid_L3_energy_reverse = round(data_watt_hours_old['grid']['L3']['energy_reverse'] + (data_watt_hours['grid']['L3']['energy_reverse'] / data_watt_hours['count'] * factor)/1000, 3)
@@ -545,10 +565,10 @@ def fetch_meter_stream():
                             })
 
                         json_data = {
-                            ## if PV not needed it can be removed, yet to evaluate
-                            #'pv': {
-                            #    'energy_forward': pv_energy_forward,
-                            #},
+                            # # if PV not needed it can be removed, yet to evaluate
+                            # 'pv': {
+                            #     'energy_forward': pv_energy_forward,
+                            # },
                             'grid': json_data_grid
                         }
 
@@ -592,10 +612,10 @@ def fetch_meter_stream():
 
                         data_watt_hours = {
                             'time_creation': timestamp,
-                            ## if PV not needed it can be removed, yet to evaluate
-                            #'pv': {
-                            #    'energy_forward': round(total_jsonpayload['pv']['power'], 3),
-                            #},
+                            # # if PV not needed it can be removed, yet to evaluate
+                            # 'pv': {
+                            #     'energy_forward': round(total_jsonpayload['pv']['power'], 3),
+                            # },
                             'grid': data_watt_hours_grid,
                             'count': 1
 
@@ -609,22 +629,22 @@ def fetch_meter_stream():
         except requests.exceptions.ConnectTimeout as e:
             logging.error("--> fetch_meter_stream(): ConnectTimeout occurred: %s" % e)
             error_count += 1
-            time.sleep(1)
+            sleep(1)
 
         except requests.exceptions.ReadTimeout as e:
             logging.error("--> fetch_meter_stream(): ReadTimeout occurred: %s" % e)
             error_count += 1
-            time.sleep(1)
+            sleep(1)
 
         except requests.exceptions.Timeout as e:
             logging.error("--> fetch_meter_stream(): Timeout occurred: %s" % e)
             error_count += 1
-            time.sleep(1)
+            sleep(1)
 
         except Exception as e:
             logging.error("--> fetch_meter_stream(): Exception occurred: %s" % e)
             error_count += 1
-            time.sleep(1)
+            sleep(1)
 
         # stopping driver, if error count is exceeded
         if error_count >= 5:
@@ -636,7 +656,7 @@ def fetch_meter_stream():
 def fetch_production_historic():
     logging.info("step: fetch_production_historic")
 
-    global replace_meters, data_production_historic
+    global replace_meters, data_production_historic, keep_running
 
     try:
 
@@ -660,7 +680,7 @@ def fetch_production_historic():
                         content['measurementType'] == 'total-consumption'
                         or
                         content['measurementType'] == 'net-consumption'
-                    ):
+                ):
 
                     meter_name = reduce(lambda a, kv: a.replace(*kv), replace_meters, content['measurementType'])
 
@@ -712,7 +732,7 @@ def fetch_production_historic():
 def fetch_devices():
     logging.info("step: fetch_devices")
 
-    global replace_devices, data_devices
+    global replace_devices, data_devices, keep_running
 
     try:
 
@@ -773,7 +793,7 @@ def fetch_devices():
 def fetch_inverters():
     logging.info("step: fetch_inverters")
 
-    global data_inverters
+    global data_inverters, keep_running
 
     try:
 
@@ -818,7 +838,7 @@ def fetch_inverters():
 def fetch_events():
     logging.info("step: fetch_events")
 
-    global data_events
+    global data_events, keep_running
 
     try:
 
@@ -870,11 +890,11 @@ def fetch_handler():
 
     while 1:
 
-        if keep_running == False:
+        if keep_running is False:
             logging.info("--> fetch_handler(): got exit signal")
             sys.exit()
 
-        time_now = int(time.time())
+        time_now = int(time())
 
         if ((time_now - fetch_production_historic_last) > fetch_production_historic_interval):
             fetch_production_historic_last = time_now
@@ -909,7 +929,7 @@ def fetch_handler():
                 logging.error("--> fetch_handler() --> fetch_events(): Exception occurred: %s. Try again in %s seconds" % (e, fetch_events_interval))
 
         # slow down requests to prevent overloading the Envoy
-        time.sleep(1)
+        sleep(1)
 
 
 def publish_mqtt_data():
@@ -925,7 +945,7 @@ def publish_mqtt_data():
 
     while 1:
 
-        if keep_running == False:
+        if keep_running is False:
             logging.info("--> publish_mqtt_data(): got exit signal")
             sys.exit()
 
@@ -996,7 +1016,6 @@ def publish_mqtt_data():
                 client.publish(config['MQTT']['topic_events'], json.dumps(data_events))
                 logging.info("--> publish_mqtt_data() --> data_events: MQTT data published")
 
-
             # check if publish_interval is greater or equals 1, else the load is too much
             if int(config['MQTT']['publish_interval']) >= 1:
                 publish_interval = int(config['MQTT']['publish_interval'])
@@ -1006,14 +1025,12 @@ def publish_mqtt_data():
             logging.info("--> publish_mqtt_data(): MQTT data published. Wait %s seconds for next run" % publish_interval)
 
             # slow down publishing to prevent overloading the Venus OS
-            time.sleep(publish_interval)
-
+            sleep(publish_interval)
 
         except Exception as e:
             logging.error("--> publish_mqtt_data(): Exception publishing MQTT data: %s" % e)
             keep_running = False
             sys.exit()
-
 
 
 # VICTRON ENERGY - VENUS OS
@@ -1047,13 +1064,13 @@ class DbusEnphaseEnvoyPvService:
         self._dbusservice.add_path('/ProductId', 0xFFFF)
         self._dbusservice.add_path('/ProductName', productname)
         self._dbusservice.add_path('/CustomName', productname)
-        self._dbusservice.add_path('/FirmwareVersion', '0.1.3 (20230409)')
+        self._dbusservice.add_path('/FirmwareVersion', '0.1.3 (20230518)')
         self._dbusservice.add_path('/HardwareVersion', hardware)
         self._dbusservice.add_path('/Connected', 1)
 
         self._dbusservice.add_path('/Latency', None)
         self._dbusservice.add_path('/ErrorCode', 0)
-        self._dbusservice.add_path('/Position', int(config['PV']['position'])) # only needed for pvinverter
+        self._dbusservice.add_path('/Position', int(config['PV']['position']))  # only needed for pvinverter
         self._dbusservice.add_path('/StatusCode', 0)  # Dummy path so VRM detects us as a PV-inverter
 
         for path, settings in self._paths.items():
@@ -1061,16 +1078,15 @@ class DbusEnphaseEnvoyPvService:
                 path, settings['initial'], gettextcallback=settings['textformat'], writeable=True, onchangecallback=self._handlechangedvalue
             )
 
-        GLib.timeout_add(1000, self._update) # pause 1000ms before the next request
-
+        GLib.timeout_add(1000, self._update)  # pause 1000ms before the next request
 
     def _update(self):
 
-        if keep_running == False:
+        if keep_running is False:
             logging.info("--> DbusEnphaseEnvoyPvService->_update(): got exit signal")
             sys.exit()
 
-        self._dbusservice['/Ac/Power']  =  round(data_meter_stream['pv']['power'], 2)
+        self._dbusservice['/Ac/Power'] = round(data_meter_stream['pv']['power'], 2)
         self._dbusservice['/Ac/Current'] = round(data_meter_stream['pv']['current'], 2)
         self._dbusservice['/Ac/Voltage'] = round(data_meter_stream['pv']['voltage'], 2)
         self._dbusservice['/Ac/Energy/Forward'] = round(data_meter_stream['pv']['energy_forward'], 2)   # needed for VRM historical data
@@ -1079,21 +1095,24 @@ class DbusEnphaseEnvoyPvService:
         self._dbusservice['/StatusCode'] = 7
 
         if 'L1' in data_meter_stream['pv']:
-            self._dbusservice['/Ac/L1/Power']  = round(data_meter_stream['pv']['L1']['power'], 2)
+            self._dbusservice['/Ac/L1/Power'] = round(data_meter_stream['pv']['L1']['power'], 2)
             self._dbusservice['/Ac/L1/Current'] = round(data_meter_stream['pv']['L1']['current'], 2)
             self._dbusservice['/Ac/L1/Voltage'] = round(data_meter_stream['pv']['L1']['voltage'], 2)
+            self._dbusservice['/Ac/L1/Frequency'] = round(data_meter_stream['pv']['L1']['frequency'], 4)
             self._dbusservice['/Ac/L1/Energy/Forward'] = round(data_meter_stream['pv']['L1']['energy_forward'], 2)   # needed for VRM historical data
 
         if 'L2' in data_meter_stream['pv']:
-            self._dbusservice['/Ac/L2/Power']  = round(data_meter_stream['pv']['L2']['power'], 2)
+            self._dbusservice['/Ac/L2/Power'] = round(data_meter_stream['pv']['L2']['power'], 2)
             self._dbusservice['/Ac/L2/Current'] = round(data_meter_stream['pv']['L2']['current'], 2)
             self._dbusservice['/Ac/L2/Voltage'] = round(data_meter_stream['pv']['L2']['voltage'], 2)
+            self._dbusservice['/Ac/L2/Frequency'] = round(data_meter_stream['pv']['L2']['frequency'], 4)
             self._dbusservice['/Ac/L2/Energy/Forward'] = round(data_meter_stream['pv']['L2']['energy_forward'], 2)   # needed for VRM historical data
 
         if 'L3' in data_meter_stream['pv']:
-            self._dbusservice['/Ac/L3/Power']  = round(data_meter_stream['pv']['L3']['power'], 2)
+            self._dbusservice['/Ac/L3/Power'] = round(data_meter_stream['pv']['L3']['power'], 2)
             self._dbusservice['/Ac/L3/Current'] = round(data_meter_stream['pv']['L3']['current'], 2)
             self._dbusservice['/Ac/L3/Voltage'] = round(data_meter_stream['pv']['L3']['voltage'], 2)
+            self._dbusservice['/Ac/L3/Frequency'] = round(data_meter_stream['pv']['L3']['frequency'], 4)
             self._dbusservice['/Ac/L3/Energy/Forward'] = round(data_meter_stream['pv']['L3']['energy_forward'], 2)   # needed for VRM historical data
 
         logging.debug("PV: {:.1f} W - {:.1f} V - {:.1f} A".format(data_meter_stream['pv']['power'], data_meter_stream['pv']['voltage'], data_meter_stream['pv']['current']))
@@ -1104,7 +1123,6 @@ class DbusEnphaseEnvoyPvService:
         if 'L3' in data_meter_stream['pv']:
             logging.debug("|- L3: {:.1f} W - {:.1f} V - {:.1f} A".format(data_meter_stream['pv']['L3']['power'], data_meter_stream['pv']['L3']['voltage'], data_meter_stream['pv']['L3']['current']))
 
-
         # increment UpdateIndex - to show that new data is available
         index = self._dbusservice['/UpdateIndex'] + 1  # increment index
         if index > 255:   # maximum value of the index
@@ -1114,21 +1132,20 @@ class DbusEnphaseEnvoyPvService:
 
     def _handlechangedvalue(self, path, value):
         logging.debug("someone else updated %s to %s" % (path, value))
-        return True # accept the change
+        return True  # accept the change
 
 
 def main():
     global client, \
         fetch_production_historic_last, fetch_devices_last, fetch_inverters_last, fetch_events_last
 
-    _thread.daemon = True # allow the program to quit
+    _thread.daemon = True  # allow the program to quit
 
-    from dbus.mainloop.glib import DBusGMainLoop
+    from dbus.mainloop.glib import DBusGMainLoop  # pyright: ignore[reportMissingImports]
     # Have a mainloop, so we can send/receive asynchronous calls to and from dbus
     DBusGMainLoop(set_as_default=True)
 
-
-    ## MQTT configuration
+    # MQTT configuration
     if MQTT_enabled == 1:
         # create new instance
         client = mqtt.Client("EnphaseEnvoyPV")
@@ -1155,16 +1172,16 @@ def main():
             logging.info("MQTT client: Using username %s and password to connect" % config['MQTT']['username'])
             client.username_pw_set(username=config['MQTT']['username'], password=config['MQTT']['password'])
 
-         # connect to broker
+        # connect to broker
+        logging.info(f"MQTT client: Connecting to broker {config['MQTT']['broker_address']} on port {config['MQTT']['broker_port']}")
         client.connect(
             host=config['MQTT']['broker_address'],
             port=int(config['MQTT']['broker_port'])
         )
         client.loop_start()
 
-
-    ## Enphase Envoy-S
-    time_now = int(time.time())
+    # Enphase Envoy-S
+    time_now = int(time())
 
     # fetch data for the first time to be able to use it in fetch_meter_stream()
     fetch_production_historic_last = time_now
@@ -1199,8 +1216,6 @@ def main():
         except Exception as e:
             logging.error("--> fetch_handler() --> fetch_events(): Exception occurred: %s. Try again in %s seconds" % (e, fetch_events_interval))
 
-
-
     # start threat for fetching data every x seconds in background
     fetch_handler_thread = threading.Thread(target=fetch_handler, name='Thread-FetchHandler')
     fetch_handler_thread.daemon = True
@@ -1216,7 +1231,6 @@ def main():
         publish_mqtt_data_thread = threading.Thread(target=publish_mqtt_data, name='Thread-PublishMqttData')
         publish_mqtt_data_thread.daemon = True
         publish_mqtt_data_thread.start()
-
 
     # wait to fetch first data, else dbus initialisation for phase count is wrong
     i = 0
@@ -1237,19 +1251,20 @@ def main():
                 )
             )
 
-        if keep_running == False:
+        if keep_running is False:
             logging.info("--> wait for first data: got exit signal")
             sys.exit()
 
-        time.sleep(1)
+        sleep(1)
         i += 1
 
-    #formatting
-    _kwh = lambda p, v: (str(round(v, 2)) + 'kWh')
-    _a = lambda p, v: (str(round(v, 2)) + 'A')
-    _w = lambda p, v: (str(round(v, 2)) + 'W')
-    _v = lambda p, v: (str(round(v, 2)) + 'V')
-    _n = lambda p, v: (str(round(v, 0)))
+    # formatting
+    def _kwh(p, v): return (str("%.2f" % v) + "kWh")
+    def _a(p, v): return (str("%.1f" % v) + "A")
+    def _w(p, v): return (str("%i" % v) + "W")
+    def _v(p, v): return (str("%.2f" % v) + "V")
+    def _hz(p, v): return (str("%.4f" % v) + "Hz")
+    def _n(p, v): return (str("%i" % v))
 
     paths_dbus = {
         '/Ac/Power': {'initial': 0, 'textformat': _w},
@@ -1268,7 +1283,8 @@ def main():
             '/Ac/L1/Power': {'initial': 0, 'textformat': _w},
             '/Ac/L1/Current': {'initial': 0, 'textformat': _a},
             '/Ac/L1/Voltage': {'initial': 0, 'textformat': _v},
-            '/Ac/L1/Energy/Forward': {'initial': 0, 'textformat': _kwh},
+            '/Ac/L1/Frequency': {'initial': None, 'textformat': _hz},
+            '/Ac/L1/Energy/Forward': {'initial': None, 'textformat': _kwh},
         })
 
     if 'L2' in data_meter_stream['pv']:
@@ -1276,7 +1292,8 @@ def main():
             '/Ac/L2/Power': {'initial': 0, 'textformat': _w},
             '/Ac/L2/Current': {'initial': 0, 'textformat': _a},
             '/Ac/L2/Voltage': {'initial': 0, 'textformat': _v},
-            '/Ac/L2/Energy/Forward': {'initial': 0, 'textformat': _kwh},
+            '/Ac/L2/Frequency': {'initial': None, 'textformat': _hz},
+            '/Ac/L2/Energy/Forward': {'initial': None, 'textformat': _kwh},
         })
 
     if 'L3' in data_meter_stream['pv']:
@@ -1284,10 +1301,11 @@ def main():
             '/Ac/L3/Power': {'initial': 0, 'textformat': _w},
             '/Ac/L3/Current': {'initial': 0, 'textformat': _a},
             '/Ac/L3/Voltage': {'initial': 0, 'textformat': _v},
-            '/Ac/L3/Energy/Forward': {'initial': 0, 'textformat': _kwh},
+            '/Ac/L3/Frequency': {'initial': None, 'textformat': _hz},
+            '/Ac/L3/Energy/Forward': {'initial': None, 'textformat': _kwh},
         })
 
-    pvac_output = DbusEnphaseEnvoyPvService(
+    DbusEnphaseEnvoyPvService(
         servicename='com.victronenergy.pvinverter.enphase_envoy',
         deviceinstance=61,
         paths=paths_dbus,
@@ -1299,6 +1317,5 @@ def main():
     mainloop.run()
 
 
-
 if __name__ == "__main__":
-  main()
+    main()

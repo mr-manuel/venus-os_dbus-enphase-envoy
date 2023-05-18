@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.3
+* Added: Frequency
+* Added: Show to which broker and port the connection was made when logging is set to INFO
+* Added: Try to reconnect every 15 seconds to MQTT broker, if connection is closed abnormally
+* Changed: Fixed code errors
+* Changed: Improved error handling and output
+
 ## v0.1.2
 * Added: Better error handling for secondary requests
 * Added: Don't send 0 values on first run
