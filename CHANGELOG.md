@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.1.4
+* Changed: Fix crash when rounding none value
+
 ## v0.1.3
 * Added: Frequency
 * Added: Show to which broker and port the connection was made when logging is set to INFO

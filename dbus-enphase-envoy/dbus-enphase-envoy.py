@@ -1064,7 +1064,7 @@ class DbusEnphaseEnvoyPvService:
         self._dbusservice.add_path('/ProductId', 0xFFFF)
         self._dbusservice.add_path('/ProductName', productname)
         self._dbusservice.add_path('/CustomName', productname)
-        self._dbusservice.add_path('/FirmwareVersion', '0.1.3 (20230518)')
+        self._dbusservice.add_path('/FirmwareVersion', '0.1.4 (20230522)')
         self._dbusservice.add_path('/HardwareVersion', hardware)
         self._dbusservice.add_path('/Connected', 1)
 
@@ -1086,34 +1086,38 @@ class DbusEnphaseEnvoyPvService:
             logging.info("--> DbusEnphaseEnvoyPvService->_update(): got exit signal")
             sys.exit()
 
-        self._dbusservice['/Ac/Power'] = round(data_meter_stream['pv']['power'], 2)
-        self._dbusservice['/Ac/Current'] = round(data_meter_stream['pv']['current'], 2)
-        self._dbusservice['/Ac/Voltage'] = round(data_meter_stream['pv']['voltage'], 2)
-        self._dbusservice['/Ac/Energy/Forward'] = round(data_meter_stream['pv']['energy_forward'], 2)   # needed for VRM historical data
+        self._dbusservice['/Ac/Power'] = round(data_meter_stream['pv']['power'], 2) if data_meter_stream['pv']['power'] is not None else None
+        self._dbusservice['/Ac/Current'] = round(data_meter_stream['pv']['current'], 2) if data_meter_stream['pv']['current'] is not None else None
+        self._dbusservice['/Ac/Voltage'] = round(data_meter_stream['pv']['voltage'], 2) if data_meter_stream['pv']['voltage'] is not None else None
+        # needed for VRM historical data
+        self._dbusservice['/Ac/Energy/Forward'] = round(data_meter_stream['pv']['energy_forward'], 2) if data_meter_stream['pv']['energy_forward'] is not None else None
 
         self._dbusservice['/ErrorCode'] = 0
         self._dbusservice['/StatusCode'] = 7
 
         if 'L1' in data_meter_stream['pv']:
-            self._dbusservice['/Ac/L1/Power'] = round(data_meter_stream['pv']['L1']['power'], 2)
-            self._dbusservice['/Ac/L1/Current'] = round(data_meter_stream['pv']['L1']['current'], 2)
-            self._dbusservice['/Ac/L1/Voltage'] = round(data_meter_stream['pv']['L1']['voltage'], 2)
-            self._dbusservice['/Ac/L1/Frequency'] = round(data_meter_stream['pv']['L1']['frequency'], 4)
-            self._dbusservice['/Ac/L1/Energy/Forward'] = round(data_meter_stream['pv']['L1']['energy_forward'], 2)   # needed for VRM historical data
+            self._dbusservice['/Ac/L1/Power'] = round(data_meter_stream['pv']['L1']['power'], 2) if data_meter_stream['pv']['L1']['power'] is not None else None
+            self._dbusservice['/Ac/L1/Current'] = round(data_meter_stream['pv']['L1']['current'], 2) if data_meter_stream['pv']['L1']['current'] is not None else None
+            self._dbusservice['/Ac/L1/Voltage'] = round(data_meter_stream['pv']['L1']['voltage'], 2) if data_meter_stream['pv']['L1']['voltage'] is not None else None
+            self._dbusservice['/Ac/L1/Frequency'] = round(data_meter_stream['pv']['L1']['frequency'], 4) if data_meter_stream['pv']['L1']['frequency'] is not None else None
+            # needed for VRM historical data
+            self._dbusservice['/Ac/L1/Energy/Forward'] = round(data_meter_stream['pv']['L1']['energy_forward'], 2) if data_meter_stream['pv']['L1']['energy_forward'] is not None else None
 
         if 'L2' in data_meter_stream['pv']:
-            self._dbusservice['/Ac/L2/Power'] = round(data_meter_stream['pv']['L2']['power'], 2)
-            self._dbusservice['/Ac/L2/Current'] = round(data_meter_stream['pv']['L2']['current'], 2)
-            self._dbusservice['/Ac/L2/Voltage'] = round(data_meter_stream['pv']['L2']['voltage'], 2)
-            self._dbusservice['/Ac/L2/Frequency'] = round(data_meter_stream['pv']['L2']['frequency'], 4)
-            self._dbusservice['/Ac/L2/Energy/Forward'] = round(data_meter_stream['pv']['L2']['energy_forward'], 2)   # needed for VRM historical data
+            self._dbusservice['/Ac/L2/Power'] = round(data_meter_stream['pv']['L2']['power'], 2) if data_meter_stream['pv']['L2']['power'] is not None else None
+            self._dbusservice['/Ac/L2/Current'] = round(data_meter_stream['pv']['L2']['current'], 2) if data_meter_stream['pv']['L2']['current'] is not None else None
+            self._dbusservice['/Ac/L2/Voltage'] = round(data_meter_stream['pv']['L2']['voltage'], 2) if data_meter_stream['pv']['L2']['voltage'] is not None else None
+            self._dbusservice['/Ac/L2/Frequency'] = round(data_meter_stream['pv']['L2']['frequency'], 4) if data_meter_stream['pv']['L2']['frequency'] is not None else None
+            # needed for VRM historical data
+            self._dbusservice['/Ac/L2/Energy/Forward'] = round(data_meter_stream['pv']['L2']['energy_forward'], 2) if data_meter_stream['pv']['L2']['energy_forward'] is not None else None
 
         if 'L3' in data_meter_stream['pv']:
-            self._dbusservice['/Ac/L3/Power'] = round(data_meter_stream['pv']['L3']['power'], 2)
-            self._dbusservice['/Ac/L3/Current'] = round(data_meter_stream['pv']['L3']['current'], 2)
-            self._dbusservice['/Ac/L3/Voltage'] = round(data_meter_stream['pv']['L3']['voltage'], 2)
-            self._dbusservice['/Ac/L3/Frequency'] = round(data_meter_stream['pv']['L3']['frequency'], 4)
-            self._dbusservice['/Ac/L3/Energy/Forward'] = round(data_meter_stream['pv']['L3']['energy_forward'], 2)   # needed for VRM historical data
+            self._dbusservice['/Ac/L3/Power'] = round(data_meter_stream['pv']['L3']['power'], 2) if data_meter_stream['pv']['L3']['power'] is not None else None
+            self._dbusservice['/Ac/L3/Current'] = round(data_meter_stream['pv']['L3']['current'], 2) if data_meter_stream['pv']['L3']['current'] is not None else None
+            self._dbusservice['/Ac/L3/Voltage'] = round(data_meter_stream['pv']['L3']['voltage'], 2) if data_meter_stream['pv']['L3']['voltage'] is not None else None
+            self._dbusservice['/Ac/L3/Frequency'] = round(data_meter_stream['pv']['L3']['frequency'], 4) if data_meter_stream['pv']['L3']['frequency'] is not None else None
+            # needed for VRM historical data
+            self._dbusservice['/Ac/L3/Energy/Forward'] = round(data_meter_stream['pv']['L3']['energy_forward'], 2) if data_meter_stream['pv']['L3']['energy_forward'] is not None else None
 
         logging.debug("PV: {:.1f} W - {:.1f} V - {:.1f} A".format(data_meter_stream['pv']['power'], data_meter_stream['pv']['voltage'], data_meter_stream['pv']['current']))
         if 'L1' in data_meter_stream['pv'] and data_meter_stream['pv']['power'] != data_meter_stream['pv']['L1']['power']:
