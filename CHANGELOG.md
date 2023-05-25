@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.1.5
+* Added: Show how much microinverters are currently producing power and if some are not reporting
+
 ## v0.1.4
 * Changed: Fix crash when rounding none value
 

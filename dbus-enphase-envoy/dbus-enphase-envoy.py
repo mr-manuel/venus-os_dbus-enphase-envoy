@@ -79,8 +79,10 @@ else:
 # check if fetch_production_historic_interval is enabled in config and not under minimum value
 if 'PV' in config and 'inverter_count' in config['PV'] and 'inverter_type' in config['PV']:
     hardware = config['PV']['inverter_count'] + 'x ' + config['PV']['inverter_type']
+    inverters = {"config": int(config['PV']['inverter_count'])}
 else:
     hardware = 'Microinverters'
+    inverters = {"config": None}
 
 # check if fetch_devices is enabled in config
 if 'DATA' in config and 'fetch_devices' in config['DATA'] and config['DATA']['fetch_devices'] == '1':
@@ -793,7 +795,7 @@ def fetch_devices():
 def fetch_inverters():
     logging.info("step: fetch_inverters")
 
-    global data_inverters, keep_running
+    global data_inverters, inverters, keep_running
 
     try:
 
@@ -808,14 +810,32 @@ def fetch_inverters():
 
         total_jsonpayload = {}
 
+        inverters_producing = 0
+        inverters_total = 0
         for inverter in response.json():
+
+            # set power to 0 if lastReportDate is older than 300 seconds
+            inverter_power = inverter['lastReportWatts'] if inverter['lastReportDate'] + 300 > int(time()) else 0
 
             total_jsonpayload.update({
                 inverter['serialNumber']: {
                     'lastReportDate': inverter['lastReportDate'],
-                    'lastReportWatts': inverter['lastReportWatts']
+                    'lastReportWatts': inverter['lastReportWatts'],
+                    'currentWatts': inverter_power
                 }
             })
+
+            # count total inverters
+            inverters_total += 1
+
+            # count producing inverters
+            if inverter_power > 5:
+                inverters_producing += 1
+
+        inverters.update({
+            "count": inverters_total,
+            "producing": inverters_producing
+        })
 
         # make fetched data globally available
         data_inverters = total_jsonpayload
@@ -1064,7 +1084,7 @@ class DbusEnphaseEnvoyPvService:
         self._dbusservice.add_path('/ProductId', 0xFFFF)
         self._dbusservice.add_path('/ProductName', productname)
         self._dbusservice.add_path('/CustomName', productname)
-        self._dbusservice.add_path('/FirmwareVersion', '0.1.4 (20230522)')
+        self._dbusservice.add_path('/FirmwareVersion', '0.1.5 (20230525)')
         self._dbusservice.add_path('/HardwareVersion', hardware)
         self._dbusservice.add_path('/Connected', 1)
 
@@ -1072,6 +1092,8 @@ class DbusEnphaseEnvoyPvService:
         self._dbusservice.add_path('/ErrorCode', 0)
         self._dbusservice.add_path('/Position', int(config['PV']['position']))  # only needed for pvinverter
         self._dbusservice.add_path('/StatusCode', 0)  # Dummy path so VRM detects us as a PV-inverter
+
+        self._dbusservice.add_path('/DeviceName', "")  # used to populate working inverters after
 
         for path, settings in self._paths.items():
             self._dbusservice.add_path(
@@ -1094,6 +1116,18 @@ class DbusEnphaseEnvoyPvService:
 
         self._dbusservice['/ErrorCode'] = 0
         self._dbusservice['/StatusCode'] = 7
+
+        self._dbusservice["/DeviceName"] = (
+            str(inverters["producing"])
+            + " of "
+            + str(inverters["config"])
+            + " producing"
+            + (
+                " - " + str(inverters["config"] - inverters["count"]) + " are not reporting"
+                if inverters["config"] > inverters["count"]
+                else ""
+            )
+        )
 
         if 'L1' in data_meter_stream['pv']:
             self._dbusservice['/Ac/L1/Power'] = round(data_meter_stream['pv']['L1']['power'], 2) if data_meter_stream['pv']['L1']['power'] is not None else None
