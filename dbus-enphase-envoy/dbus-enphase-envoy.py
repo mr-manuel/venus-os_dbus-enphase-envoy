@@ -814,8 +814,12 @@ def fetch_inverters():
         inverters_total = 0
         for inverter in response.json():
 
-            # set power to 0 if lastReportDate is older than 300 seconds
-            inverter_power = inverter['lastReportWatts'] if inverter['lastReportDate'] + 300 > int(time()) else 0
+            # count reporting inverters and set power to 0 if lastReportDate is older than 900 seconds
+            if inverter['lastReportDate'] + 900 > int(time()):
+                inverters_total += 1
+                inverter_power = inverter['lastReportWatts']
+            else:
+                inverter_power = 0
 
             total_jsonpayload.update({
                 inverter['serialNumber']: {
@@ -824,9 +828,6 @@ def fetch_inverters():
                     'currentWatts': inverter_power
                 }
             })
-
-            # count total inverters
-            inverters_total += 1
 
             # count producing inverters
             if inverter_power > 5:
@@ -1123,7 +1124,7 @@ class DbusEnphaseEnvoyPvService:
             + str(inverters["config"])
             + " producing"
             + (
-                " - " + str(inverters["config"] - inverters["count"]) + " are not reporting"
+                " (" + str(inverters["config"] - inverters["count"]) + " are not reporting)"
                 if inverters["config"] > inverters["count"]
                 else ""
             )
