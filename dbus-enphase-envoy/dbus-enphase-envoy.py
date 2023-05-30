@@ -168,8 +168,13 @@ def on_disconnect(client, userdata, rc):
             logging.warning("MQTT client: Trying to reconnect")
             client.connect(config['MQTT']['broker_address'])
             connected = 1
-        except Exception as err:
-            logging.error(f"MQTT client: Error in retrying to connect with broker ({config['MQTT']['broker_address']}:{config['MQTT']['broker_port']}): {err}")
+        except Exception:
+            exception_type, exception_object, exception_traceback = sys.exc_info()
+            file = exception_traceback.tb_frame.f_code.co_filename
+            line = exception_traceback.tb_lineno
+            logging.error(f"MQTT client: Exception occurred: {repr(exception_object)} of type {exception_type} in {file} line #{line}")
+
+            logging.error(f"MQTT client: Error in retrying to connect with broker ({config['MQTT']['broker_address']}:{config['MQTT']['broker_port']})")
             logging.error("MQTT client: Retrying in 15 seconds")
             connected = 0
             sleep(15)
@@ -247,6 +252,12 @@ def fetch_meter_stream():
 
             # reset error count
             error_count = 0
+
+            if response.status_code != 200:
+                logging.error("--> Received status code " + str(response.status_code) + " requesting the meter data.")
+                sleep(60)
+                keep_running = False
+                sys.exit()
 
             for line in response.iter_lines():
 
@@ -643,8 +654,11 @@ def fetch_meter_stream():
             error_count += 1
             sleep(1)
 
-        except Exception as e:
-            logging.error("--> fetch_meter_stream(): Exception occurred: %s" % e)
+        except Exception:
+            exception_type, exception_object, exception_traceback = sys.exc_info()
+            file = exception_traceback.tb_frame.f_code.co_filename
+            line = exception_traceback.tb_lineno
+            logging.error(f"--> fetch_meter_stream(): Exception occurred: {repr(exception_object)} of type {exception_type} in {file} line #{line}")
             error_count += 1
             sleep(1)
 
@@ -725,8 +739,11 @@ def fetch_production_historic():
     except requests.exceptions.Timeout as e:
         logging.error("--> fetch_production_historic(): Timeout occurred: %s" % e)
 
-    except Exception as e:
-        logging.error("--> fetch_production_historic(): Exception occurred: %s" % e)
+    except Exception:
+        exception_type, exception_object, exception_traceback = sys.exc_info()
+        file = exception_traceback.tb_frame.f_code.co_filename
+        line = exception_traceback.tb_lineno
+        logging.error(f"--> fetch_production_historic(): Exception occurred: {repr(exception_object)} of type {exception_type} in {file} line #{line}")
         keep_running = False
         sys.exit()
 
@@ -786,8 +803,11 @@ def fetch_devices():
     except requests.exceptions.Timeout as e:
         logging.error("--> fetch_devices(): Timeout occurred: %s" % e)
 
-    except Exception as e:
-        logging.error("--> fetch_devices(): Exception occurred: %s" % e)
+    except Exception:
+        exception_type, exception_object, exception_traceback = sys.exc_info()
+        file = exception_traceback.tb_frame.f_code.co_filename
+        line = exception_traceback.tb_lineno
+        logging.error(f"--> fetch_devices(): Exception occurred: {repr(exception_object)} of type {exception_type} in {file} line #{line}")
         keep_running = False
         sys.exit()
 
@@ -850,8 +870,11 @@ def fetch_inverters():
     except requests.exceptions.Timeout as e:
         logging.error("--> fetch_inverters(): Timeout occurred: %s" % e)
 
-    except Exception as e:
-        logging.error("--> fetch_inverters(): Exception occurred: %s" % e)
+    except Exception:
+        exception_type, exception_object, exception_traceback = sys.exc_info()
+        file = exception_traceback.tb_frame.f_code.co_filename
+        line = exception_traceback.tb_lineno
+        logging.error(f"--> fetch_inverters(): Exception occurred: {repr(exception_object)} of type {exception_type} in {file} line #{line}")
         keep_running = False
         sys.exit()
 
@@ -922,32 +945,48 @@ def fetch_handler():
             try:
                 fetch_production_historic()
                 logging.info("--> fetch_handler() --> fetch_production_historic(): JSON data feched. Wait %s seconds for next run" % fetch_production_historic_interval)
-            except Exception as e:
-                logging.error("--> fetch_handler() --> fetch_production_historic(): Exception occurred: %s. Try again in %s seconds" % (e, fetch_production_historic_interval))
+            except Exception:
+                exception_type, exception_object, exception_traceback = sys.exc_info()
+                file = exception_traceback.tb_frame.f_code.co_filename
+                line = exception_traceback.tb_lineno
+                logging.error(f"--> fetch_handler() --> fetch_production_historic(): Exception occurred: {repr(exception_object)} of type {exception_type} in {file} line #{line}")
+                logging.error(f"Try again in {fetch_production_historic_interval} seconds")
 
         if fetch_devices_enabled == 1 and ((time_now - fetch_devices_last) > fetch_devices_interval):
             fetch_devices_last = time_now
             try:
                 fetch_devices()
                 logging.info("--> fetch_handler() --> fetch_devices(): JSON data feched. Wait %s seconds for next run" % fetch_devices_interval)
-            except Exception as e:
-                logging.error("--> fetch_handler() --> fetch_devices(): Exception occurred: %s. Try again in %s seconds" % (e, fetch_devices_interval))
+            except Exception:
+                exception_type, exception_object, exception_traceback = sys.exc_info()
+                file = exception_traceback.tb_frame.f_code.co_filename
+                line = exception_traceback.tb_lineno
+                logging.error(f"--> fetch_handler() --> fetch_devices(): Exception occurred: {repr(exception_object)} of type {exception_type} in {file} line #{line}")
+                logging.error(f"Try again in {fetch_devices_interval} seconds")
 
         if fetch_inverters_enabled == 1 and ((time_now - fetch_inverters_last) > fetch_inverters_interval):
             fetch_inverters_last = time_now
             try:
                 fetch_inverters()
                 logging.info("--> fetch_handler() --> fetch_inverters(): JSON data feched. Wait %s seconds for next run" % fetch_inverters_interval)
-            except Exception as e:
-                logging.error("--> fetch_handler() --> fetch_inverters(): Exception occurred: %s. Try again in %s seconds" % (e, fetch_inverters_interval))
+            except Exception:
+                exception_type, exception_object, exception_traceback = sys.exc_info()
+                file = exception_traceback.tb_frame.f_code.co_filename
+                line = exception_traceback.tb_lineno
+                logging.error(f"--> fetch_handler() --> fetch_inverters(): Exception occurred: {repr(exception_object)} of type {exception_type} in {file} line #{line}")
+                logging.error(f"Try again in {fetch_inverters_interval} seconds")
 
         if fetch_events_enabled == 1 and ((time_now - fetch_events_last) > fetch_events_interval):
             fetch_events_last = time_now
             try:
                 fetch_events()
                 logging.info("--> fetch_handler() --> fetch_events(): JSON data feched. Wait %s seconds for next run" % fetch_events_interval)
-            except Exception as e:
-                logging.error("--> fetch_handler() --> fetch_events(): Exception occurred: %s. Try again in %s seconds" % (e, fetch_events_interval))
+            except Exception:
+                exception_type, exception_object, exception_traceback = sys.exc_info()
+                file = exception_traceback.tb_frame.f_code.co_filename
+                line = exception_traceback.tb_lineno
+                logging.error(f"--> fetch_handler() --> fetch_events(): Exception occurred: {repr(exception_object)} of type {exception_type} in {file} line #{line}")
+                logging.error(f"Try again in {fetch_events_interval} seconds")
 
         # slow down requests to prevent overloading the Envoy
         sleep(1)
@@ -1048,8 +1087,11 @@ def publish_mqtt_data():
             # slow down publishing to prevent overloading the Venus OS
             sleep(publish_interval)
 
-        except Exception as e:
-            logging.error("--> publish_mqtt_data(): Exception publishing MQTT data: %s" % e)
+        except Exception:
+            exception_type, exception_object, exception_traceback = sys.exc_info()
+            file = exception_traceback.tb_frame.f_code.co_filename
+            line = exception_traceback.tb_lineno
+            logging.error(f"--> publish_mqtt_data(): Exception occurred: {repr(exception_object)} of type {exception_type} in {file} line #{line}")
             keep_running = False
             sys.exit()
 
@@ -1227,8 +1269,12 @@ def main():
     try:
         fetch_production_historic()
         logging.info("--> fetch_handler() --> fetch_production_historic(): JSON data feched. Wait %s seconds for next run" % fetch_production_historic_interval)
-    except Exception as e:
-        logging.error("--> fetch_handler() --> fetch_production_historic(): Exception occurred: %s. Try again in %s seconds" % (e, fetch_production_historic_interval))
+    except Exception:
+        exception_type, exception_object, exception_traceback = sys.exc_info()
+        file = exception_traceback.tb_frame.f_code.co_filename
+        line = exception_traceback.tb_lineno
+        logging.error(f"--> fetch_handler() --> fetch_production_historic(): Exception occurred: {repr(exception_object)} of type {exception_type} in {file} line #{line}")
+        logging.error(f"Try again in {fetch_production_historic_interval} seconds")
 
     # fetch data for the first time alse MQTT outputs an empty status once
     if fetch_devices_enabled == 1:
@@ -1236,24 +1282,36 @@ def main():
         try:
             fetch_devices()
             logging.info("--> fetch_handler() --> fetch_devices(): JSON data feched. Wait %s seconds for next run" % fetch_devices_interval)
-        except Exception as e:
-            logging.error("--> fetch_handler() --> fetch_devices(): Exception occurred: %s. Try again in %s seconds" % (e, fetch_devices_interval))
+        except Exception:
+            exception_type, exception_object, exception_traceback = sys.exc_info()
+            file = exception_traceback.tb_frame.f_code.co_filename
+            line = exception_traceback.tb_lineno
+            logging.error(f"--> fetch_handler() --> fetch_devices(): Exception occurred: {repr(exception_object)} of type {exception_type} in {file} line #{line}")
+            logging.error(f"Try again in {fetch_devices_interval} seconds")
 
     if fetch_inverters_enabled == 1:
         fetch_inverters_last = time_now
         try:
             fetch_inverters()
             logging.info("--> fetch_handler() --> fetch_inverters(): JSON data feched. Wait %s seconds for next run" % fetch_inverters_interval)
-        except Exception as e:
-            logging.error("--> fetch_handler() --> fetch_inverters(): Exception occurred: %s. Try again in %s seconds" % (e, fetch_inverters_interval))
+        except Exception:
+            exception_type, exception_object, exception_traceback = sys.exc_info()
+            file = exception_traceback.tb_frame.f_code.co_filename
+            line = exception_traceback.tb_lineno
+            logging.error(f"--> fetch_handler() --> fetch_inverters(): Exception occurred: {repr(exception_object)} of type {exception_type} in {file} line #{line}")
+            logging.error(f"Try again in {fetch_inverters_interval} seconds")
 
     if fetch_events_enabled == 1:
         fetch_events_last = time_now
         try:
             fetch_events()
             logging.info("--> fetch_handler() --> fetch_events(): JSON data feched. Wait %s seconds for next run" % fetch_events_interval)
-        except Exception as e:
-            logging.error("--> fetch_handler() --> fetch_events(): Exception occurred: %s. Try again in %s seconds" % (e, fetch_events_interval))
+        except Exception:
+            exception_type, exception_object, exception_traceback = sys.exc_info()
+            file = exception_traceback.tb_frame.f_code.co_filename
+            line = exception_traceback.tb_lineno
+            logging.error(f"--> fetch_handler() --> fetch_events(): Exception occurred: {repr(exception_object)} of type {exception_type} in {file} line #{line}")
+            logging.error(f"Try again in {fetch_events_interval} seconds")
 
     # start threat for fetching data every x seconds in background
     fetch_handler_thread = threading.Thread(target=fetch_handler, name='Thread-FetchHandler')
