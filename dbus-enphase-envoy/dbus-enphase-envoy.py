@@ -6,6 +6,7 @@ import logging
 import sys
 import os
 from time import sleep, time
+from datetime import datetime
 import json
 import paho.mqtt.client as mqtt
 import configparser  # for config/ini file
@@ -16,16 +17,22 @@ import requests
 from requests.auth import HTTPDigestAuth
 from functools import reduce
 
+# import to request new token
+from enphasetoken import getToken
+
 # import Victron Energy packages
 sys.path.insert(1, os.path.join(os.path.dirname(__file__), 'ext', 'velib_python'))
 from vedbus import VeDbusService
 
+# disable "InsecureRequestWarning: Unverified HTTPS request is being made." warnings
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # get values from config.ini file
 try:
     config_file = (os.path.dirname(os.path.realpath(__file__))) + "/config.ini"
     if os.path.exists(config_file):
-        config = configparser.ConfigParser()
+        config = configparser.RawConfigParser()
         config.read(config_file)
         if (config['ENVOY']['address'] == "IP_ADDR_OR_FQDN"):
             print("ERROR:The \"config.ini\" is using invalid default values like IP_ADDR_OR_FQDN. The driver restarts in 60 seconds.")
@@ -69,6 +76,64 @@ if 'MQTT' in config and 'enabled' in config['MQTT'] and config['MQTT']['enabled'
     MQTT_enabled = 1
 else:
     MQTT_enabled = 0
+
+
+# checks for D7.x.x firmware
+if 'ENVOY' in config and 'firmware' in config['ENVOY'] and config['ENVOY']['firmware'] == "D7":
+    request_auth = "token"
+    request_schema = "https"
+    error = []
+
+    if (
+        'ENVOY' in config
+        and 'enlighten_user' in config['ENVOY']
+        and config['ENVOY']['enlighten_user'] != ""
+    ):
+        envoy_enlighten_user = config['ENVOY']['enlighten_user']
+    else:
+        error.append("enlighten_user")
+
+    if (
+        'ENVOY' in config
+        and 'enlighten_password' in config['ENVOY']
+        and config['ENVOY']['enlighten_password'] != ""
+    ):
+        envoy_enlighten_password = config['ENVOY']['enlighten_password']
+    else:
+        error.append("enlighten_password")
+
+    if (
+        'ENVOY' in config
+        and 'serial' in config['ENVOY']
+        and config['ENVOY']['serial'] != ""
+    ):
+        envoy_serial = config['ENVOY']['serial']
+    else:
+        error.append("serial")
+
+    if len(error) > 0:
+        logging.error('This Envoy values are missing in the "config.ini": ' + ", ".join(error))
+        logging.error("The driver restarts in 60 seconds.")
+        sleep(60)
+        sys.exit()
+
+    logging.error("D7 firmware selected")
+
+# checks for D5.x.x firmware
+else:
+    request_auth = "digest"
+    request_schema = "http"
+
+    if "ENVOY" in config and "password" in config['ENVOY'] and config['ENVOY']['password'] != "":
+        envoy_password = config['ENVOY']['password']
+    else:
+        logging.error('This Envoy values are missing in the "config.ini": password')
+        logging.error("The driver restarts in 60 seconds.")
+        sleep(60)
+        sys.exit()
+
+    logging.error("D5 firmware selected")
+
 
 # check if fetch_production_historic_interval is enabled in config and not under minimum value
 if 'ENVOY' in config and 'fetch_production_historic_interval' in config['ENVOY'] and int(config['ENVOY']['fetch_production_historic_interval']) > 900:
@@ -153,6 +218,19 @@ data_devices = {}
 data_inverters = {}
 data_events = {}
 
+fetch_production_historic_last = 0
+fetch_devices_last = 0
+fetch_inverters_last = 0
+fetch_events_last = 0
+
+auth_token = {
+    "auth_token": "",
+    "created": 0,
+    "check_last": 0,
+    "check_result": False
+}
+request_headers = {}
+
 
 # MQTT
 def on_disconnect(client, userdata, rc):
@@ -193,13 +271,37 @@ def on_publish(client, userdata, rc):
     pass
 
 
+def tokenManager():
+    global envoy_enlighten_user, envoy_enlighten_password, envoy_serial, request_headers, auth_token
+
+    # check expiry on first run and then once every 24h
+    if auth_token["check_last"] < int(time()) - 86400:
+        logging.info("step: tokenManager")
+
+        # request token from file system or generate a new one if missing or about to expire
+        token = getToken(envoy_enlighten_user, envoy_enlighten_password, envoy_serial)
+        result = token.refresh()
+
+        if result:
+            request_headers = {
+                "Authorization": "Bearer " + result['auth_token']
+            }
+            logging.error(f"Token created: {datetime.fromtimestamp(result['created'])} UTC")
+        else:
+            # check again in 5 minutes
+            auth_token["check_last"] = int(time) - 86400 + 900
+            logging.error("Token was not loaded/renewed! Check again in 5 minutes")
+
+
 # ENPHASE - ENOVY-S
 def fetch_meter_stream():
     logging.info("step: fetch_meter_stream")
 
-    global config, keep_running,\
+    global config, error_count, keep_running, \
+        request_auth, request_headers, request_schema,\
         data_meter_stream, data_production_historic
 
+    error_count = 0
     marker = b'data: '
 
     # create dictionary for later to count watt hours
@@ -236,39 +338,41 @@ def fetch_meter_stream():
     else:
         json_data = {}
 
-    error_count = 0
-
     while 1:
-
         try:
-
-            url = 'http://%s/stream/meter' % config['ENVOY']['address']
-            response = requests.get(
-                url,
-                auth=HTTPDigestAuth('installer', config['ENVOY']['password']),
-                stream=True,
-                timeout=5
-            )
-
-            # reset error count
-            error_count = 0
+            url = '%s://%s/stream/meter' % (request_schema, config['ENVOY']['address'])
+            if request_auth == "token":
+                response = requests.get(
+                    url,
+                    stream=True,
+                    timeout=5,
+                    headers=request_headers,
+                    verify=False
+                )
+            else:
+                response = requests.get(
+                    url,
+                    stream=True,
+                    timeout=5,
+                    auth=HTTPDigestAuth('installer', config['ENVOY']['password'])
+                )
 
             if response.status_code != 200:
-                logging.error("--> Received status code " + str(response.status_code) + " requesting the meter data.")
+                logging.error(f"--> fetch_meter_stream(): Received HTTP status code {response.status_code}. Restarting the driver in 60 seconds.")
                 sleep(60)
                 keep_running = False
                 sys.exit()
 
-            for line in response.iter_lines():
+            for row in response.iter_lines():
 
                 if keep_running is False:
                     logging.info("--> fetch_meter_stream(): got exit signal")
                     sys.exit()
 
-                if line.startswith(marker):
-                    data = json.loads(line.replace(marker, b''))
+                if row.startswith(marker):
+                    data = json.loads(row.replace(marker, b''))
 
-                    # set timestamp when line is read
+                    # set timestamp when row is read
                     timestamp = round(time(), 0)
                     total_jsonpayload = {}
 
@@ -639,10 +743,13 @@ def fetch_meter_stream():
                     # make fetched data globally available
                     data_meter_stream = total_jsonpayload
 
+                # reset error count
+                error_count = 0
+
         except requests.exceptions.ConnectTimeout as e:
             logging.error("--> fetch_meter_stream(): ConnectTimeout occurred: %s" % e)
             error_count += 1
-            sleep(1)
+            sleep(15)
 
         except requests.exceptions.ReadTimeout as e:
             logging.error("--> fetch_meter_stream(): ReadTimeout occurred: %s" % e)
@@ -651,6 +758,14 @@ def fetch_meter_stream():
 
         except requests.exceptions.Timeout as e:
             logging.error("--> fetch_meter_stream(): Timeout occurred: %s" % e)
+            error_count += 1
+            sleep(1)
+
+        except KeyError:
+            exception_type, exception_object, exception_traceback = sys.exc_info()
+            file = exception_traceback.tb_frame.f_code.co_filename
+            line = exception_traceback.tb_lineno
+            logging.error(f"--> fetch_meter_stream(): {repr(exception_object)} in {file} line #{line}")
             error_count += 1
             sleep(1)
 
@@ -664,7 +779,7 @@ def fetch_meter_stream():
 
         # stopping driver, if error count is exceeded
         if error_count >= 5:
-            logging.error("--> fetch_meter_stream(): %s errors accured. Stopping driver..." % error_count)
+            logging.error(f'--> fetch_meter_stream(): {error_count} errors accured. Stopping driver...')
             keep_running = False
             sys.exit()
 
@@ -672,15 +787,30 @@ def fetch_meter_stream():
 def fetch_production_historic():
     logging.info("step: fetch_production_historic")
 
-    global replace_meters, data_production_historic, keep_running
+    global replace_meters, data_production_historic, keep_running, request_auth, request_headers, request_schema
 
     try:
+        url = '%s://%s/production.json?details=1' % (request_schema, config['ENVOY']['address'])
+        if request_auth == "token":
+            response = requests.get(
+                url,
+                timeout=60,
+                headers=request_headers,
+                verify=False
+            )
+        else:
+            response = requests.get(
+                url,
+                timeout=60,
+                auth=HTTPDigestAuth('installer', config['ENVOY']['password'])
+            )
 
-        url = 'http://%s/production.json?details=1' % config['ENVOY']['address']
-        response = requests.get(
-            url,
-            timeout=60
-        )
+        if response.status_code != 200:
+            logging.error(f"--> fetch_production_historic(): Received HTTP status code {response.status_code}. Restarting the driver in 60 seconds.")
+            sleep(60)
+            keep_running = False
+            sys.exit()
+
         if response.elapsed.total_seconds() > 5:
             logging.warning("--> fetch_production_historic(): HTTP request took longer than 5 seconds: %s seconds" % response.elapsed.total_seconds())
 
@@ -751,15 +881,31 @@ def fetch_production_historic():
 def fetch_devices():
     logging.info("step: fetch_devices")
 
-    global replace_devices, data_devices, keep_running
+    global replace_devices, data_devices, keep_running, request_auth, request_headers, request_schema
 
     try:
 
-        url = 'http://%s/inventory.json' % config['ENVOY']['address']
-        response = requests.get(
-            url,
-            timeout=60
-        )
+        url = '%s://%s/inventory.json' % (request_schema, config['ENVOY']['address'])
+        if request_auth == "token":
+            response = requests.get(
+                url,
+                timeout=60,
+                headers=request_headers,
+                verify=False
+            )
+        else:
+            response = requests.get(
+                url,
+                timeout=60,
+                auth=HTTPDigestAuth('installer', config['ENVOY']['password'])
+            )
+
+        if response.status_code != 200:
+            logging.error(f"--> fetch_devices(): Received HTTP status code {response.status_code}. Restarting the driver in 60 seconds.")
+            sleep(60)
+            keep_running = False
+            sys.exit()
+
         if response.elapsed.total_seconds() > 5:
             logging.warning("--> fetch_devices(): HTTP request took longer than 5 seconds: %s seconds" % response.elapsed.total_seconds())
 
@@ -815,16 +961,31 @@ def fetch_devices():
 def fetch_inverters():
     logging.info("step: fetch_inverters")
 
-    global data_inverters, inverters, keep_running
+    global data_inverters, inverters, keep_running, request_auth, request_headers, request_schema
 
     try:
 
-        url = 'http://%s/api/v1/production/inverters' % config['ENVOY']['address']
-        response = requests.get(
-            url,
-            timeout=60,
-            auth=HTTPDigestAuth('installer', config['ENVOY']['password'])
-        )
+        url = '%s://%s/api/v1/production/inverters' % (request_schema, config['ENVOY']['address'])
+        if request_auth == "token":
+            response = requests.get(
+                url,
+                timeout=60,
+                headers=request_headers,
+                verify=False
+            )
+        else:
+            response = requests.get(
+                url,
+                timeout=60,
+                auth=HTTPDigestAuth('installer', config['ENVOY']['password'])
+            )
+
+        if response.status_code != 200:
+            logging.error(f"--> fetch_inverters(): Received HTTP status code {response.status_code}. Restarting the driver in 60 seconds.")
+            sleep(60)
+            keep_running = False
+            sys.exit()
+
         if response.elapsed.total_seconds() > 5:
             logging.warning("--> fetch_inverters(): HTTP request took longer than 5 seconds: %s seconds" % response.elapsed.total_seconds())
 
@@ -882,15 +1043,31 @@ def fetch_inverters():
 def fetch_events():
     logging.info("step: fetch_events")
 
-    global data_events, keep_running
+    global data_events, keep_running, request_auth, request_headers, request_schema
 
     try:
 
-        url = 'http://%s/datatab/event_dt.rb?start=0&length=10' % config['ENVOY']['address']
-        response = requests.get(
-            url,
-            timeout=60
-        )
+        url = '%s://%s/datatab/event_dt.rb?start=0&length=10' % (request_schema, config['ENVOY']['address'])
+        if request_auth == "token":
+            response = requests.get(
+                url,
+                timeout=60,
+                headers=request_headers,
+                verify=False
+            )
+        else:
+            response = requests.get(
+                url,
+                timeout=60,
+                auth=HTTPDigestAuth('installer', config['ENVOY']['password'])
+            )
+
+        if response.status_code != 200:
+            logging.error(f"--> fetch_events(): Received HTTP status code {response.status_code}. Restarting the driver in 60 seconds.")
+            sleep(60)
+            keep_running = False
+            sys.exit()
+
         if response.elapsed.total_seconds() > 5:
             logging.warning("--> fetch_events(): HTTP request took longer than 5 seconds: %s seconds" % response.elapsed.total_seconds())
 
@@ -919,8 +1096,11 @@ def fetch_events():
     except requests.exceptions.Timeout as e:
         logging.error("--> fetch_events(): Timeout occurred: %s" % e)
 
-    except Exception as e:
-        logging.error("--> fetch_events(): Exception occurred: %s" % e)
+    except Exception:
+        exception_type, exception_object, exception_traceback = sys.exc_info()
+        file = exception_traceback.tb_frame.f_code.co_filename
+        line = exception_traceback.tb_lineno
+        logging.error(f"--> fetch_events(): Exception occurred: {repr(exception_object)} of type {exception_type} in {file} line #{line}")
         keep_running = False
         sys.exit()
 
@@ -941,9 +1121,9 @@ def fetch_handler():
         time_now = int(time())
 
         if ((time_now - fetch_production_historic_last) > fetch_production_historic_interval):
-            fetch_production_historic_last = time_now
             try:
                 fetch_production_historic()
+                fetch_production_historic_last = time_now
                 logging.info("--> fetch_handler() --> fetch_production_historic(): JSON data feched. Wait %s seconds for next run" % fetch_production_historic_interval)
             except Exception:
                 exception_type, exception_object, exception_traceback = sys.exc_info()
@@ -953,9 +1133,9 @@ def fetch_handler():
                 logging.error(f"Try again in {fetch_production_historic_interval} seconds")
 
         if fetch_devices_enabled == 1 and ((time_now - fetch_devices_last) > fetch_devices_interval):
-            fetch_devices_last = time_now
             try:
                 fetch_devices()
+                fetch_devices_last = time_now
                 logging.info("--> fetch_handler() --> fetch_devices(): JSON data feched. Wait %s seconds for next run" % fetch_devices_interval)
             except Exception:
                 exception_type, exception_object, exception_traceback = sys.exc_info()
@@ -965,9 +1145,9 @@ def fetch_handler():
                 logging.error(f"Try again in {fetch_devices_interval} seconds")
 
         if fetch_inverters_enabled == 1 and ((time_now - fetch_inverters_last) > fetch_inverters_interval):
-            fetch_inverters_last = time_now
             try:
                 fetch_inverters()
+                fetch_inverters_last = time_now
                 logging.info("--> fetch_handler() --> fetch_inverters(): JSON data feched. Wait %s seconds for next run" % fetch_inverters_interval)
             except Exception:
                 exception_type, exception_object, exception_traceback = sys.exc_info()
@@ -977,9 +1157,9 @@ def fetch_handler():
                 logging.error(f"Try again in {fetch_inverters_interval} seconds")
 
         if fetch_events_enabled == 1 and ((time_now - fetch_events_last) > fetch_events_interval):
-            fetch_events_last = time_now
             try:
                 fetch_events()
+                fetch_events_last = time_now
                 logging.info("--> fetch_handler() --> fetch_events(): JSON data feched. Wait %s seconds for next run" % fetch_events_interval)
             except Exception:
                 exception_type, exception_object, exception_traceback = sys.exc_info()
@@ -1218,7 +1398,7 @@ class DbusEnphaseEnvoyPvService:
 
 def main():
     global client, \
-        fetch_production_historic_last, fetch_devices_last, fetch_inverters_last, fetch_events_last
+        fetch_production_historic_last, fetch_devices_last, fetch_inverters_last, fetch_events_last, request_schema
 
     _thread.daemon = True  # allow the program to quit
 
@@ -1261,91 +1441,25 @@ def main():
         )
         client.loop_start()
 
+    # get auth token
+    tokenManager()
+
     # Enphase Envoy-S
-    time_now = int(time())
-
-    # fetch data for the first time to be able to use it in fetch_meter_stream()
-    fetch_production_historic_last = time_now
-    try:
-        fetch_production_historic()
-        logging.info("--> fetch_handler() --> fetch_production_historic(): JSON data feched. Wait %s seconds for next run" % fetch_production_historic_interval)
-    except Exception:
-        exception_type, exception_object, exception_traceback = sys.exc_info()
-        file = exception_traceback.tb_frame.f_code.co_filename
-        line = exception_traceback.tb_lineno
-        logging.error(f"--> fetch_handler() --> fetch_production_historic(): Exception occurred: {repr(exception_object)} of type {exception_type} in {file} line #{line}")
-        logging.error(f"Try again in {fetch_production_historic_interval} seconds")
-
-    # fetch data for the first time alse MQTT outputs an empty status once
-    if fetch_devices_enabled == 1:
-        fetch_devices_last = time_now
-        try:
-            fetch_devices()
-            logging.info("--> fetch_handler() --> fetch_devices(): JSON data feched. Wait %s seconds for next run" % fetch_devices_interval)
-        except Exception:
-            exception_type, exception_object, exception_traceback = sys.exc_info()
-            file = exception_traceback.tb_frame.f_code.co_filename
-            line = exception_traceback.tb_lineno
-            logging.error(f"--> fetch_handler() --> fetch_devices(): Exception occurred: {repr(exception_object)} of type {exception_type} in {file} line #{line}")
-            logging.error(f"Try again in {fetch_devices_interval} seconds")
-
-    if fetch_inverters_enabled == 1:
-        fetch_inverters_last = time_now
-        try:
-            fetch_inverters()
-            logging.info("--> fetch_handler() --> fetch_inverters(): JSON data feched. Wait %s seconds for next run" % fetch_inverters_interval)
-        except Exception:
-            exception_type, exception_object, exception_traceback = sys.exc_info()
-            file = exception_traceback.tb_frame.f_code.co_filename
-            line = exception_traceback.tb_lineno
-            logging.error(f"--> fetch_handler() --> fetch_inverters(): Exception occurred: {repr(exception_object)} of type {exception_type} in {file} line #{line}")
-            logging.error(f"Try again in {fetch_inverters_interval} seconds")
-
-    if fetch_events_enabled == 1:
-        fetch_events_last = time_now
-        try:
-            fetch_events()
-            logging.info("--> fetch_handler() --> fetch_events(): JSON data feched. Wait %s seconds for next run" % fetch_events_interval)
-        except Exception:
-            exception_type, exception_object, exception_traceback = sys.exc_info()
-            file = exception_traceback.tb_frame.f_code.co_filename
-            line = exception_traceback.tb_lineno
-            logging.error(f"--> fetch_handler() --> fetch_events(): Exception occurred: {repr(exception_object)} of type {exception_type} in {file} line #{line}")
-            logging.error(f"Try again in {fetch_events_interval} seconds")
-
     # start threat for fetching data every x seconds in background
     fetch_handler_thread = threading.Thread(target=fetch_handler, name='Thread-FetchHandler')
     fetch_handler_thread.daemon = True
     fetch_handler_thread.start()
 
-    # start threat for fetching continuously the stream in background
-    fetch_meter_stream_thread = threading.Thread(target=fetch_meter_stream, name='Thread-FetchMeterStream')
-    fetch_meter_stream_thread.daemon = True
-    fetch_meter_stream_thread.start()
-
-    # start threat for publishing mqtt data in background
-    if MQTT_enabled == 1:
-        publish_mqtt_data_thread = threading.Thread(target=publish_mqtt_data, name='Thread-PublishMqttData')
-        publish_mqtt_data_thread.daemon = True
-        publish_mqtt_data_thread.start()
-
-    # wait to fetch first data, else dbus initialisation for phase count is wrong
+    # wait to fetch data_production_historic else data_meter_stream cannot be fully merged
     i = 0
-    while not bool(data_meter_stream):
+    while not bool(data_production_historic):
         if i % 60 != 0 or i == 0:
-            logging.info("--> data_meter_stream not yet ready")
+            logging.info("--> data_production_historic not yet ready")
         else:
             logging.warning(
-                (
-                    "--> data_meter_stream not yet ready after %s seconds.\n" +
-                    "Try accessing http://%s/stream/meter from your PC with the Envoy-S installer credentials and see,\n" +
-                    "if it downloads a file with JSON content (one JSON per line). When it's working like expected you have\n" +
-                    "to interrupt the download after a few seconds, since the Envoy-S is streaming the data."
-                )
-                % (
-                    str(i),
-                    config['ENVOY']['address']
-                )
+                f"--> data_production_historic not yet ready after {i} seconds.\n" +
+                f"Try accessing {request_schema}://{config['ENVOY']['address']}/production.json?details=1 from your PC and see,\n" +
+                "if it downloads a file with JSON content."
             )
 
         if keep_running is False:
@@ -1354,6 +1468,37 @@ def main():
 
         sleep(1)
         i += 1
+
+    # start threat for fetching continuously the stream in background
+    fetch_meter_stream_thread = threading.Thread(target=fetch_meter_stream, name='Thread-FetchMeterStream')
+    fetch_meter_stream_thread.daemon = True
+    fetch_meter_stream_thread.start()
+
+    # wait to fetch fetch_meter_stream else dbus initialisation for phase count is wrong
+    i = 0
+    while not bool(data_meter_stream):
+        if i % 60 != 0 or i == 0:
+            logging.info("--> data_meter_stream not yet ready")
+        else:
+            logging.warning(
+                f"--> data_meter_stream not yet ready after {i} seconds.\n" +
+                f"Try accessing {request_schema}://{config['ENVOY']['address']}/stream/meter from your PC with the Envoy-S installer credentials and see,\n" +
+                "if it downloads a file with JSON content (one JSON per line). When it's working like expected you have\n" +
+                "to interrupt the download after a few seconds, since the Envoy-S is streaming the data."
+            )
+
+        if keep_running is False:
+            logging.info("--> wait for first data: got exit signal")
+            sys.exit()
+
+        sleep(1)
+        i += 1
+
+    # start threat for publishing mqtt data in background
+    if MQTT_enabled == 1:
+        publish_mqtt_data_thread = threading.Thread(target=publish_mqtt_data, name='Thread-PublishMqttData')
+        publish_mqtt_data_thread.daemon = True
+        publish_mqtt_data_thread.start()
 
     # formatting
     def _kwh(p, v): return (str("%.2f" % v) + "kWh")

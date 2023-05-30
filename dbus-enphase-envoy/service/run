@@ -1,4 +1,5 @@
 #!/bin/sh
+echo
 echo "*** starting dbus-enphase-envoy ***"
 exec 2>&1
 exec /data/etc/dbus-enphase-envoy/dbus-enphase-envoy.py

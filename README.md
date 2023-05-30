@@ -6,20 +6,11 @@
 
 I wrote this script for myself. I'm not responsible, if you damage something using my script.
 
-### ⚠️ Important
+### ⚠️ Update
 
-This script works only with the `D5.x.x` firmware on the Enphase Envoy-S. If you have installed the `D7.x.x` firmware and don't need it's [features](https://support.enphase.com/s/article/IQ-Gateway-Software-7-0-86-Release-Notes) you can ask the Enphase Support to downgrade your Enphase Envoy-S to the latest `D5.x.x` firmware.
+Since `v0.2.0` this script works with the `D5.x.x` and `D7.x.x` firmware on the Enphase Envoy-S. You can choose the firmware in the `config.ini`.
 
-The firmware `D7.x.x` has completely another authentication mechanism and needs a token for the local API access. Additionally the token needs to be renewed every 6 months over the internet. Because of this and other reasons (request limits) there is no implementation for the `D7.x.x` firmware in this driver.
-
-More informations can be found here:
-* [IQ Gateway Software 7.0.86 Release Notes](https://support.enphase.com/s/article/IQ-Gateway-Software-7-0-86-Release-Notes)
-* [Unimpressed with loss of local API connectivity to Envoy-S](https://support.enphase.com/s/question/0D53m00006ySLuRCAW/unimpressed-with-loss-of-local-api-connectivity-to-envoys)
-* [Enphase Envoy - Current state of things](https://community.home-assistant.io/t/enphase-envoy-current-state-of-things/443829)
-* [Enphase integration not working after Envoy updated to D7.0.43 (8ed8ea)](https://community.home-assistant.io/t/enphase-integration-not-working-after-envoy-updated-to-d7-0-43-8ed8ea/314452)
-* [The Enlighten System API](https://developer.enphase.com/plans)
-* [Enphase Envoy-S “Data Scraping”](https://thecomputerperson.wordpress.com/2016/08/03/enphase-envoy-s-data-scraping/)
-
+The firmware `D7.x.x` has another authentication mechanism and needs a token for the local API access. This token is automatically requested and updated. To achieve this you need to enter your Enphase Enlighten credentials and the Envoy serial number in the `config.ini`.
 
 ### Purpose
 

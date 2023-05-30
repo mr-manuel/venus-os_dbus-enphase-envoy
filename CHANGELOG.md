@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.2.0
+* Added: Support for D7.x.x firmware
+* Changed: Improved driver stability
+* Changed: Improved further the error handling
+
 ## v0.1.5
 * Added: Show how much microinverters are currently producing power and if some are not reporting
 
