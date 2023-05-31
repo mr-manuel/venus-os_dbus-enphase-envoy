@@ -144,10 +144,18 @@ else:
 # check if fetch_production_historic_interval is enabled in config and not under minimum value
 if 'PV' in config and 'inverter_count' in config['PV'] and 'inverter_type' in config['PV']:
     hardware = config['PV']['inverter_count'] + 'x ' + config['PV']['inverter_type']
-    inverters = {"config": int(config['PV']['inverter_count'])}
+    inverters = {
+        "config": int(config['PV']['inverter_count']),
+        "count": 0,
+        "producing": 0
+    }
 else:
     hardware = 'Microinverters'
-    inverters = {"config": None}
+    inverters = {
+        "config": None,
+        "count": 0,
+        "producing": 0
+    }
 
 # check if fetch_devices is enabled in config
 if 'DATA' in config and 'fetch_devices' in config['DATA'] and config['DATA']['fetch_devices'] == '1':
@@ -1018,6 +1026,11 @@ def fetch_inverters():
             "count": inverters_total,
             "producing": inverters_producing
         })
+
+        if inverters["config"] is None:
+            inverters.update({
+                "config": inverters_total
+            })
 
         # make fetched data globally available
         data_inverters = total_jsonpayload
