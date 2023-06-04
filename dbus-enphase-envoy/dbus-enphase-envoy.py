@@ -6,7 +6,7 @@ import logging
 import sys
 import os
 from time import sleep, time
-from datetime import datetime
+# from datetime import datetime
 import json
 import paho.mqtt.client as mqtt
 import configparser  # for config/ini file
@@ -282,23 +282,33 @@ def on_publish(client, userdata, rc):
 def tokenManager():
     global envoy_enlighten_user, envoy_enlighten_password, envoy_serial, request_headers, auth_token
 
-    # check expiry on first run and then once every 24h
-    if auth_token["check_last"] < int(time()) - 86400:
-        logging.info("step: tokenManager")
+    logging.info("step: tokenManager")
 
-        # request token from file system or generate a new one if missing or about to expire
-        token = getToken(envoy_enlighten_user, envoy_enlighten_password, envoy_serial)
-        result = token.refresh()
+    while 1:
+        # check expiry on first run and then once every minute
+        if auth_token["check_last"] < int(time()) - 59:
 
-        if result:
-            request_headers = {
-                "Authorization": "Bearer " + result['auth_token']
-            }
-            logging.error(f"Token created: {datetime.fromtimestamp(result['created'])} UTC")
-        else:
-            # check again in 5 minutes
-            auth_token["check_last"] = int(time) - 86400 + 900
-            logging.error("Token was not loaded/renewed! Check again in 5 minutes")
+            # request token from file system or generate a new one if missing or about to expire
+            token = getToken(envoy_enlighten_user, envoy_enlighten_password, envoy_serial)
+            result = token.refresh()
+
+            if result:
+                request_headers = {
+                    "Authorization": "Bearer " + result['auth_token']
+                }
+                auth_token = {
+                    "auth_token": result['auth_token'],
+                    "created": result['created'],
+                    "check_last": int(time()),
+                    "check_result": True
+                }
+                # logging.error(f"Token created on: {datetime.fromtimestamp(result['created'])} UTC")
+            else:
+                # check again in 5 minutes
+                auth_token["check_last"] = int(time()) - 86400 + 900
+                logging.error("Token was not loaded/renewed! Check again in 5 minutes")
+
+        sleep(60)
 
 
 # ENPHASE - ENOVY-S
@@ -1411,7 +1421,7 @@ class DbusEnphaseEnvoyPvService:
 
 def main():
     global client, \
-        fetch_production_historic_last, fetch_devices_last, fetch_inverters_last, fetch_events_last, request_schema
+        fetch_production_historic_last, fetch_devices_last, fetch_inverters_last, fetch_events_last, request_schema, auth_token, keep_running
 
     _thread.daemon = True  # allow the program to quit
 
@@ -1454,8 +1464,33 @@ def main():
         )
         client.loop_start()
 
-    # get auth token
-    tokenManager()
+    # check auth token
+    # start threat for fetching data every x seconds in background
+    tokenManager_thread = threading.Thread(target=tokenManager, name='Thread-TokenManager')
+    tokenManager_thread.daemon = True
+    tokenManager_thread.start()
+
+    # wait to fetch data_production_historic else data_meter_stream cannot be fully merged
+    i = 0
+    while auth_token["auth_token"] == "":
+        if i % 60 != 0 or i == 0:
+            logging.info("--> token still empty")
+        else:
+            logging.warning(
+                "token still empty"
+            )
+
+        if keep_running is False:
+            logging.info("--> wait for first data: got exit signal")
+            sys.exit()
+
+        if i > 300:
+            logging.error("Maximum of 300 seconds wait time reached. Restarting the driver.")
+            keep_running = False
+            sys.exit()
+
+        sleep(1)
+        i += 1
 
     # Enphase Envoy-S
     # start threat for fetching data every x seconds in background
@@ -1477,6 +1512,11 @@ def main():
 
         if keep_running is False:
             logging.info("--> wait for first data: got exit signal")
+            sys.exit()
+
+        if i > 300:
+            logging.error("Maximum of 300 seconds wait time reached. Restarting the driver.")
+            keep_running = False
             sys.exit()
 
         sleep(1)
@@ -1502,6 +1542,11 @@ def main():
 
         if keep_running is False:
             logging.info("--> wait for first data: got exit signal")
+            sys.exit()
+
+        if i > 300:
+            logging.error("Maximum of 300 seconds wait time reached. Restarting the driver.")
+            keep_running = False
             sys.exit()
 
         sleep(1)

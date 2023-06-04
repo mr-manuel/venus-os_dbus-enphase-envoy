@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 
 from time import time
+from datetime import datetime
 import json
-import requests
+# import requests
 import os
 import sys
 import logging
+
+from authentication import Authentication
 
 
 class getToken:
@@ -26,11 +29,30 @@ class getToken:
         else:
             json_data = {"auth_token": "", "created": 0}
 
-        # request a new token, if the old one is older than 90 days
-        if json_data["created"] + (60 * 60 * 24 * 90) < time():
-            logging.warning("EnphaseToken: Requesting new access token...")
+        # request a new token, if the old one is older than 12 hours
+        if json_data["created"] + (60 * 60 * 12) - (60 * 5) < time():
+            logging.warning(f"EnphaseToken: Token expired. Creation date: {datetime.fromtimestamp(json_data['created'])} UTC")
 
             try:
+                token = Authentication()
+
+                token.authenticate(self.user, self.password)
+
+                response_data = token.get_token_for_commissioned_gateway(self.serial)
+
+                json_data = {
+                    "auth_token": response_data,
+                    "created": int(time()),
+                }
+
+                with open(token_file, "w") as file:
+                    file.write(json.dumps(json_data))
+
+                logging.warning(f"EnphaseToken: Token successfully requested. New creation date: {datetime.fromtimestamp(json_data['created'])} UTC")
+
+                return json_data
+
+                """"
                 data_login = {"user[email]": self.user, "user[password]": self.password}
                 response_login = requests.post(
                     "https://enlighten.enphaseenergy.com/login/login.json",
@@ -80,6 +102,7 @@ class getToken:
                     logging.error("EnphaseToken: " + response_data["message"])
 
                     return False
+                """
 
             except Exception:
                 exception_type, exception_object, exception_traceback = sys.exc_info()
@@ -92,7 +115,7 @@ class getToken:
                 return False
 
         else:
-            logging.warning("EnphaseToken: Token still valid")
+            logging.info(f"EnphaseToken: Token still valid. Creation date {datetime.fromtimestamp(json_data['created'])} UTC")
             return json_data
 
 
