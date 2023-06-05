@@ -12,6 +12,15 @@ Since `v0.2.0` this script works with the `D5.x.x` and `D7.x.x` firmware on the 
 
 The firmware `D7.x.x` has another authentication mechanism and needs a token for the local API access. This token is automatically requested and updated. To achieve this you need to enter your Enphase Enlighten credentials and the Envoy serial number in the `config.ini`.
 
+💡 NOTE
+
+Currently it works only for self-installers, since they are able to request a token that has the installer user. You can request a token over https://entrez.enphaseenergy.com/ -> Login -> For commissioned gateway -> Enter the name of your site (at least three letters to start the search), select the Gateway and then press create access token. Copy the token and paste it on https://www.jstoolset.com/jwt.
+
+* If the `enphaseUser` is `installer` then this should work for you.
+* If the `enphaseUser` is `owner` then this probably won't work for you.
+
+I'm currently trying to find a solution with the Enphase Support for this.
+
 ### Purpose
 
 This script adds the Enphase Microinverters as a single PV system in Venus OS. The data is fetched from the Enphase Envoy-S device and publishes on the dbus as the service `com.victronenergy.pvinverter.enphase_envoy` with the VRM instance `61`. The number of phases are automatically recognized, so it displays automatically the number of phases you are using (one, two or three).
