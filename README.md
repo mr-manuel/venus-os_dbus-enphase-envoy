@@ -21,6 +21,8 @@ Currently it works only for self-installers, since they are able to request a to
 
 I'm currently trying to find a solution with the Enphase Support for this.
 
+UPDATE (2023.06.06): The needed API `/stream/meter` will be available with the `owner` token after the release of a firmware update at the end of June. See [Make "/stream/meter" available with "owner" token](https://support.enphase.com/s/question/0D53m00009CewmJCAR/make-streammeter-available-with-owner-token). After this happen I release the next stable release of this driver.
+
 ### Purpose
 
 This script adds the Enphase Microinverters as a single PV system in Venus OS. The data is fetched from the Enphase Envoy-S device and publishes on the dbus as the service `com.victronenergy.pvinverter.enphase_envoy` with the VRM instance `61`. The number of phases are automatically recognized, so it displays automatically the number of phases you are using (one, two or three).
