@@ -146,14 +146,14 @@ if 'PV' in config and 'inverter_count' in config['PV'] and 'inverter_type' in co
     hardware = config['PV']['inverter_count'] + 'x ' + config['PV']['inverter_type']
     inverters = {
         "config": int(config['PV']['inverter_count']),
-        "count": 0,
+        "reporting": 0,
         "producing": 0
     }
 else:
     hardware = 'Microinverters'
     inverters = {
         "config": None,
-        "count": 0,
+        "reporting": 0,
         "producing": 0
     }
 
@@ -1013,8 +1013,8 @@ def fetch_inverters():
         inverters_total = 0
         for inverter in response.json():
 
-            # count reporting inverters and set power to 0 if lastReportDate is older than 900 seconds
-            if inverter['lastReportDate'] + 900 > int(time()):
+            # count reporting inverters and set power to 0 if lastReportDate is older than 900 (default microinverter reporting interval) seconds + 300 seconds
+            if inverter['lastReportDate'] + 1200 > int(time()):
                 inverters_total += 1
                 inverter_power = inverter['lastReportWatts']
             else:
@@ -1033,7 +1033,7 @@ def fetch_inverters():
                 inverters_producing += 1
 
         inverters.update({
-            "count": inverters_total,
+            "reporting": inverters_total,
             "producing": inverters_producing
         })
 
@@ -1330,7 +1330,7 @@ class DbusEnphaseEnvoyPvService:
         self._dbusservice.add_path('/ProductId', 0xFFFF)
         self._dbusservice.add_path('/ProductName', productname)
         self._dbusservice.add_path('/CustomName', productname)
-        self._dbusservice.add_path('/FirmwareVersion', '0.1.5 (20230525)')
+        self._dbusservice.add_path('/FirmwareVersion', '0.2.0-beta2 (20230716)')
         self._dbusservice.add_path('/HardwareVersion', hardware)
         self._dbusservice.add_path('/Connected', 1)
 
@@ -1367,13 +1367,18 @@ class DbusEnphaseEnvoyPvService:
             str(inverters["producing"])
             + " of "
             + str(inverters["config"])
-            + " producing"
+            + " ⚡️"
             + (
-                " (" + str(inverters["config"] - inverters["count"]) + " are not reporting)"
-                if inverters["config"] > inverters["count"]
+                " (" + str(inverters["config"] - inverters["reporting"]) + " u/a)"
+                if inverters["config"] > inverters["reporting"]
                 else ""
             )
         )
+
+        self._dbusservice["/Enphase/AuthToken"] = auth_token["auth_token"]
+        self._dbusservice["/Enphase/MicroInvertersConfig"] = inverters["config"]
+        self._dbusservice["/Enphase/MicroInvertersReporting"] = inverters["reporting"]
+        self._dbusservice["/Enphase/MicroInvertersProducing"] = inverters["producing"]
 
         if 'L1' in data_meter_stream['pv']:
             self._dbusservice['/Ac/L1/Power'] = round(data_meter_stream['pv']['L1']['power'], 2) if data_meter_stream['pv']['L1']['power'] is not None else None
@@ -1565,6 +1570,7 @@ def main():
     def _v(p, v): return (str("%.2f" % v) + "V")
     def _hz(p, v): return (str("%.4f" % v) + "Hz")
     def _n(p, v): return (str("%i" % v))
+    def _str(p, v): return (str("%s" % v))
 
     paths_dbus = {
         '/Ac/Power': {'initial': 0, 'textformat': _w},
@@ -1576,6 +1582,11 @@ def main():
         '/Ac/Position': {'initial': int(config['PV']['position']), 'textformat': _n},
         '/Ac/StatusCode': {'initial': 0, 'textformat': _n},
         '/UpdateIndex': {'initial': 0, 'textformat': _n},
+
+        '/Enphase/AuthToken': {'initial': "", 'textformat': _str},  # used to populate chaging token
+        '/Enphase/MicroInvertersConfig': {'initial': inverters["config"], 'textformat': _n},
+        '/Enphase/MicroInvertersReporting': {'initial': inverters["reporting"], 'textformat': _n},
+        '/Enphase/MicroInvertersProducing': {'initial': inverters["producing"], 'textformat': _n},
     }
 
     if 'L1' in data_meter_stream['pv']:

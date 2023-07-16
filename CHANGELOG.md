@@ -1,6 +1,10 @@
 # Changelog
 
-## v0.2.0
+## v0.2.0-beta2
+* Added: Publish Enphase auth token, microinverter config, reporting and producing count
+* Changed: Set microinveter power to 0 after 1200 seconds instead of 900 seconds
+
+## v0.2.0-beta1
 * Added: Support for D7.x.x firmware
 * Changed: Improved driver stability
 * Changed: Improved further the error handling
