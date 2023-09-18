@@ -20,7 +20,7 @@ Since `v0.2.0` this script works with the `D5.x.x` and `D7.x.x` firmware on the 
 
 The firmware `D7.x.x` has another authentication mechanism and needs a token for the local API access. This token is automatically requested and updated. To achieve this you need to enter your Enphase Enlighten credentials and the Envoy serial number in the `config.ini`.
 
-💡 NOTE
+#### 💡 NOTE
 
 Currently it works only for self-installers, since they are able to request a token that has the installer user. You can request a token over https://entrez.enphaseenergy.com/ -> Login -> For commissioned gateway -> Enter the name of your site (at least three letters to start the search), select the Gateway and then press create access token. Copy the token and paste it on https://www.jstoolset.com/jwt.
 
@@ -30,6 +30,8 @@ Currently it works only for self-installers, since they are able to request a to
 I'm currently trying to find a solution with the Enphase Support for this.
 
 UPDATE (2023.06.06): The needed API `/stream/meter` will be available with the `owner` token after the release of a firmware update at the end of June. See [Make "/stream/meter" available with "owner" token](https://support.enphase.com/s/question/0D53m00009CewmJCAR/make-streammeter-available-with-owner-token). After this happen I release the next stable release of this driver.
+
+🚨 UPDATE (2023.09.18): Enphase did nothing until now. Your help is requested! Please also comment under [Make "/stream/meter" available with "owner" token](https://support.enphase.com/s/question/0D53m00009CewmJCAR/make-streammeter-available-with-owner-token). Additionally contact the Enphase support, by linking to the article above, tell them that you need this function and ask when it will be released.
 
 ### Purpose
 
