@@ -324,7 +324,7 @@ def fetch_meter_stream():
 
     # create dictionary for later to count watt hours
     data_watt_hours = {
-        'time_creation': round(time(), 0),
+        'time_creation': int(time()),
         'count': 0
     }
     # calculate and save watthours after every x seconds
@@ -391,7 +391,7 @@ def fetch_meter_stream():
                     data = json.loads(row.replace(marker, b''))
 
                     # set timestamp when row is read
-                    timestamp = round(time(), 0)
+                    timestamp = int(time())
                     total_jsonpayload = {}
 
                     for meter in ['production', 'net-consumption', 'total-consumption']:
@@ -1330,7 +1330,7 @@ class DbusEnphaseEnvoyPvService:
         self._dbusservice.add_path('/ProductId', 0xFFFF)
         self._dbusservice.add_path('/ProductName', productname)
         self._dbusservice.add_path('/CustomName', productname)
-        self._dbusservice.add_path('/FirmwareVersion', '0.2.0-beta2 (20230716)')
+        self._dbusservice.add_path('/FirmwareVersion', '0.2.0-beta3 (20230918)')
         self._dbusservice.add_path('/HardwareVersion', hardware)
         self._dbusservice.add_path('/Connected', 1)
 
@@ -1469,33 +1469,35 @@ def main():
         )
         client.loop_start()
 
-    # check auth token
-    # start threat for fetching data every x seconds in background
-    tokenManager_thread = threading.Thread(target=tokenManager, name='Thread-TokenManager')
-    tokenManager_thread.daemon = True
-    tokenManager_thread.start()
+    # Auth token for firmware D7
+    if request_auth == "token":
+        # check auth token
+        # start threat for fetching data every x seconds in background
+        tokenManager_thread = threading.Thread(target=tokenManager, name='Thread-TokenManager')
+        tokenManager_thread.daemon = True
+        tokenManager_thread.start()
 
-    # wait to fetch data_production_historic else data_meter_stream cannot be fully merged
-    i = 0
-    while auth_token["auth_token"] == "":
-        if i % 60 != 0 or i == 0:
-            logging.info("--> token still empty")
-        else:
-            logging.warning(
-                "token still empty"
-            )
+        # wait to fetch data_production_historic else data_meter_stream cannot be fully merged
+        i = 0
+        while auth_token["auth_token"] == "":
+            if i % 60 != 0 or i == 0:
+                logging.info("--> token still empty")
+            else:
+                logging.warning(
+                    "token still empty"
+                )
 
-        if keep_running is False:
-            logging.info("--> wait for first data: got exit signal")
-            sys.exit()
+            if keep_running is False:
+                logging.info("--> wait for first data: got exit signal")
+                sys.exit()
 
-        if i > 300:
-            logging.error("Maximum of 300 seconds wait time reached. Restarting the driver.")
-            keep_running = False
-            sys.exit()
+            if i > 300:
+                logging.error("Maximum of 300 seconds wait time reached. Restarting the driver.")
+                keep_running = False
+                sys.exit()
 
-        sleep(1)
-        i += 1
+            sleep(1)
+            i += 1
 
     # Enphase Envoy-S
     # start threat for fetching data every x seconds in background
