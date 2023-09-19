@@ -1477,7 +1477,7 @@ def main():
         tokenManager_thread.daemon = True
         tokenManager_thread.start()
 
-        # wait to fetch data_production_historic else data_meter_stream cannot be fully merged
+        # wait to fetch auth_token
         i = 0
         while auth_token["auth_token"] == "":
             if i % 60 != 0 or i == 0:
