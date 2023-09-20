@@ -53,6 +53,12 @@ If you also want to use the Enphase Envoy-S as grid meter in Venus OS, then inst
 
 Shoudn't you already have a MQTT broker, than you can enable the Venus OS integrated MQTT broker under Venus OS GUI -> Menu -> Services -> MQTT on LAN (SSL) and if desired MQTT on LAN (Plaintext). In the `config.ini` insert the IP address of the Venus OS device or `127.0.0.1`.
 
+#### ⚠️ Requirement
+
+The driver only works, if there is at least the production CT (Current Transformer) installed. Best would be, if you have a consumption and production CT installed. In nearly all cases it's possible to retrofit them. You can purchase the needed CT's as a pair in the [Enphase Store](https://enphase.com/store/communication/consumption-ct) or wherever you like. Ask your installer, if you don't know how to retrofit it by yourself.
+
+![CT wiring diagram](./screenshots/ct-wiring-diagram.png)
+
 ### Config
 
 Copy or rename the `config.sample.ini` to `config.ini` in the `dbus-enphase-envoy` folder and change it as you need it.
