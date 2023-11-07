@@ -316,7 +316,7 @@ def fetch_meter_stream():
     logging.info("step: fetch_meter_stream")
 
     global config, error_count, keep_running, \
-        request_auth, request_headers, request_schema,\
+        request_auth, request_headers, request_schema, \
         data_meter_stream, data_production_historic
 
     error_count = 0
@@ -1330,7 +1330,7 @@ class DbusEnphaseEnvoyPvService:
         self._dbusservice.add_path('/ProductId', 0xFFFF)
         self._dbusservice.add_path('/ProductName', productname)
         self._dbusservice.add_path('/CustomName', productname)
-        self._dbusservice.add_path('/FirmwareVersion', '0.2.0-beta3 (20230918)')
+        self._dbusservice.add_path('/FirmwareVersion', '0.2.0 (20231107)')
         self._dbusservice.add_path('/HardwareVersion', hardware)
         self._dbusservice.add_path('/Connected', 1)
 
@@ -1361,7 +1361,14 @@ class DbusEnphaseEnvoyPvService:
         self._dbusservice['/Ac/Energy/Forward'] = round(data_meter_stream['pv']['energy_forward'], 2) if data_meter_stream['pv']['energy_forward'] is not None else None
 
         self._dbusservice['/ErrorCode'] = 0
-        self._dbusservice['/StatusCode'] = 7
+
+        # is only displayed for Fronius inverters (product ID 0xA142) in GUI but displayed in VRM portal
+        # if power above or equal to 5 W, set status code to 9 (running)
+        if self._dbusservice['/StatusCode'] != 7 and self._dbusservice['/Ac/Power'] >= 5:
+            self._dbusservice['/StatusCode'] = 7
+        # else set status code to 8 (standby)
+        elif self._dbusservice['/StatusCode'] != 8:
+            self._dbusservice['/StatusCode'] = 8
 
         self._dbusservice["/DeviceName"] = (
             str(inverters["producing"])
@@ -1582,7 +1589,6 @@ def main():
 
         '/Ac/MaxPower': {'initial': int(config['PV']['max']), 'textformat': _w},
         '/Ac/Position': {'initial': int(config['PV']['position']), 'textformat': _n},
-        '/Ac/StatusCode': {'initial': 0, 'textformat': _n},
         '/UpdateIndex': {'initial': 0, 'textformat': _n},
 
         '/Enphase/AuthToken': {'initial': "", 'textformat': _str},  # used to populate chaging token

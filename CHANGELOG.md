@@ -1,7 +1,10 @@
 # Changelog
 
+## v0.2.0
+* Added: StatusCode: 7 = Running; 8 = Standby (if power below 5 W)
+
 ## v0.2.0-beta3
-* Fixed: Driver does not start when selecting D5 firmware (#5)
+* Changed: Fixed that the driver does not start when selecting D5 firmware (#5)
 
 ## v0.2.0-beta2
 * Added: Publish Enphase auth token, microinverter config, reporting and producing count
