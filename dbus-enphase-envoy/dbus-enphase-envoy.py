@@ -363,7 +363,7 @@ def fetch_meter_stream():
                 response = requests.get(
                     url,
                     stream=True,
-                    timeout=5,
+                    timeout=60,
                     headers=request_headers,
                     verify=False
                 )
@@ -371,7 +371,7 @@ def fetch_meter_stream():
                 response = requests.get(
                     url,
                     stream=True,
-                    timeout=5,
+                    timeout=60,
                     auth=HTTPDigestAuth('installer', config['ENVOY']['password'])
                 )
 
@@ -380,6 +380,9 @@ def fetch_meter_stream():
                 sleep(60)
                 keep_running = False
                 sys.exit()
+
+            if response.elapsed.total_seconds() > 5:
+                logging.warning("--> fetch_meter_stream(): HTTP request took longer than 5 seconds: %s seconds" % response.elapsed.total_seconds())
 
             for row in response.iter_lines():
 
@@ -1330,7 +1333,7 @@ class DbusEnphaseEnvoyPvService:
         self._dbusservice.add_path('/ProductId', 0xFFFF)
         self._dbusservice.add_path('/ProductName', productname)
         self._dbusservice.add_path('/CustomName', productname)
-        self._dbusservice.add_path('/FirmwareVersion', '0.2.0 (20231107)')
+        self._dbusservice.add_path('/FirmwareVersion', '0.2.1 (20231204)')
         self._dbusservice.add_path('/HardwareVersion', hardware)
         self._dbusservice.add_path('/Connected', 1)
 

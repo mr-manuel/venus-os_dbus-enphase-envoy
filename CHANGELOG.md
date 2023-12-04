@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.2.1
+* Changed: Increased timeout for fetch_meter_stream() from 5 seconds to 60 seconds. Output a warning, if it take longer than 5 seconds
+
 ## v0.2.0
 * Added: StatusCode: 7 = Running; 8 = Standby (if power below 5 W)
 
