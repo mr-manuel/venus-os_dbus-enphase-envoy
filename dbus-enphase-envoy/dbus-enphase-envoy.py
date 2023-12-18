@@ -1333,7 +1333,7 @@ class DbusEnphaseEnvoyPvService:
         self._dbusservice.add_path('/ProductId', 0xFFFF)
         self._dbusservice.add_path('/ProductName', productname)
         self._dbusservice.add_path('/CustomName', productname)
-        self._dbusservice.add_path('/FirmwareVersion', '0.2.1 (20231204)')
+        self._dbusservice.add_path('/FirmwareVersion', '0.2.2 (20231218)')
         self._dbusservice.add_path('/HardwareVersion', hardware)
         self._dbusservice.add_path('/Connected', 1)
 
@@ -1366,12 +1366,14 @@ class DbusEnphaseEnvoyPvService:
         self._dbusservice['/ErrorCode'] = 0
 
         # is only displayed for Fronius inverters (product ID 0xA142) in GUI but displayed in VRM portal
-        # if power above or equal to 5 W, set status code to 9 (running)
-        if self._dbusservice['/StatusCode'] != 7 and self._dbusservice['/Ac/Power'] >= 5:
-            self._dbusservice['/StatusCode'] = 7
+        # if power above or equal to 5 W, set status code to 7 (running)
+        if self._dbusservice['/Ac/Power'] >= 5:
+            if self._dbusservice['/StatusCode'] != 7:
+                self._dbusservice['/StatusCode'] = 7
         # else set status code to 8 (standby)
-        elif self._dbusservice['/StatusCode'] != 8:
-            self._dbusservice['/StatusCode'] = 8
+        else:
+            if self._dbusservice['/StatusCode'] != 8:
+                self._dbusservice['/StatusCode'] = 8
 
         self._dbusservice["/DeviceName"] = (
             str(inverters["producing"])
