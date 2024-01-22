@@ -1590,7 +1590,7 @@ def main():
         '/Ac/Power': {'initial': 0, 'textformat': _w},
         '/Ac/Current': {'initial': 0, 'textformat': _a},
         '/Ac/Voltage': {'initial': 0, 'textformat': _v},
-        '/Ac/Energy/Forward': {'initial': 0, 'textformat': _kwh},
+        '/Ac/Energy/Forward': {'initial': None, 'textformat': _kwh},
 
         '/Ac/MaxPower': {'initial': int(config['PV']['max']), 'textformat': _w},
         '/Ac/Position': {'initial': int(config['PV']['position']), 'textformat': _n},

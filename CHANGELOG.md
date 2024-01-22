@@ -1,7 +1,7 @@
 # Changelog
 
 ## v0.2.2
-* Chaged: Fixed status flapping between running and standby
+* Changed: Fixed status flapping between running and standby
 
 ## v0.2.1
 * Changed: Increased timeout for fetch_meter_stream() from 5 seconds to 60 seconds. Output a warning, if it take longer than 5 seconds
