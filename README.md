@@ -375,38 +375,38 @@ Copy or rename the `config.sample.ini` to `config.ini` in the `dbus-enphase-envo
     cd /tmp
 
     # download driver
-    wget -O /tmp/venus-os_dbus-mqtt-enphase-envoy.zip https://github.com/mr-manuel/venus-os_dbus-mqtt-enphase-envoy/archive/refs/heads/master.zip
+    wget -O /tmp/venus-os_dbus-enphase-envoy.zip https://github.com/mr-manuel/venus-os_dbus-enphase-envoy/archive/refs/heads/master.zip
 
     # If updating: cleanup old folder
-    rm -rf /tmp/venus-os_dbus-mqtt-enphase-envoy-master
+    rm -rf /tmp/venus-os_dbus-enphase-envoy-master
 
     # unzip folder
-    unzip venus-os_dbus-mqtt-enphase-envoy.zip
+    unzip venus-os_dbus-enphase-envoy.zip
 
     # If updating: backup existing config file
-    mv /data/etc/dbus-mqtt-enphase-envoy/config.ini /data/etc/dbus-mqtt-enphase-envoy_config.ini
+    mv /data/etc/dbus-enphase-envoy/config.ini /data/etc/dbus-enphase-envoy_config.ini
 
     # If updating: cleanup existing driver
-    rm -rf /data/etc/dbus-mqtt-enphase-envoy
+    rm -rf /data/etc/dbus-enphase-envoy
 
     # copy files
-    cp -R /tmp/venus-os_dbus-mqtt-enphase-envoy-master/dbus-mqtt-enphase-envoy/ /data/etc/
+    cp -R /tmp/venus-os_dbus-enphase-envoy-master/dbus-enphase-envoy/ /data/etc/
 
     # If updating: restore existing config file
-    mv /data/etc/dbus-mqtt-enphase-envoy_config.ini /data/etc/dbus-mqtt-enphase-envoy/config.ini
+    mv /data/etc/dbus-enphase-envoy_config.ini /data/etc/dbus-enphase-envoy/config.ini
     ```
 
 3. Copy the sample config file, if you are installing the driver for the first time and edit it to your needs.
 
     ```bash
     # copy default config file
-    cp /data/etc/dbus-mqtt-enphase-envoy/config.sample.ini /data/etc/dbus-mqtt-enphase-envoy/config.ini
+    cp /data/etc/dbus-enphase-envoy/config.sample.ini /data/etc/dbus-enphase-envoy/config.ini
 
     # edit the config file with nano
-    nano /data/etc/dbus-mqtt-enphase-envoy/config.ini
+    nano /data/etc/dbus-enphase-envoy/config.ini
     ```
 
-4. Run `bash /data/etc/dbus-mqtt-enphase-envoy/install.sh` to install the driver as service.
+4. Run `bash /data/etc/dbus-enphase-envoy/install.sh` to install the driver as service.
 
    The daemon-tools should start this service automatically within seconds.
 
