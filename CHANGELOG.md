@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.2.3
+* Added: Change PV position via GUI
+
 ## v0.2.2
 * Changed: Fixed status flapping between running and standby
 

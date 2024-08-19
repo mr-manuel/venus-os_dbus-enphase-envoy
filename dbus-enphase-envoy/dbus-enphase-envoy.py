@@ -6,11 +6,11 @@ import logging
 import sys
 import os
 from time import sleep, time
-# from datetime import datetime
 import json
 import paho.mqtt.client as mqtt
 import configparser  # for config/ini file
 import _thread
+import re
 
 import threading
 import requests
@@ -1339,14 +1339,23 @@ class DbusEnphaseEnvoyPvService:
 
         self._dbusservice.add_path('/Latency', None)
         self._dbusservice.add_path('/ErrorCode', 0)
-        self._dbusservice.add_path('/Position', int(config['PV']['position']))  # only needed for pvinverter
+        self._dbusservice.add_path(
+            '/Position',
+            int(config['PV']['position']),
+            writeable=True,
+            onchangecallback=self.callback_position
+        )  # only needed for pvinverter
         self._dbusservice.add_path('/StatusCode', 0)  # Dummy path so VRM detects us as a PV-inverter
 
         self._dbusservice.add_path('/DeviceName', "")  # used to populate working inverters after
 
         for path, settings in self._paths.items():
             self._dbusservice.add_path(
-                path, settings['initial'], gettextcallback=settings['textformat'], writeable=True, onchangecallback=self._handlechangedvalue
+                path,
+                settings['initial'],
+                writeable=True,
+                onchangecallback=self._handlechangedvalue,
+                gettextcallback=settings['textformat']
             )
 
         GLib.timeout_add(1000, self._update)  # pause 1000ms before the next request
@@ -1434,6 +1443,29 @@ class DbusEnphaseEnvoyPvService:
     def _handlechangedvalue(self, path, value):
         logging.debug("someone else updated %s to %s" % (path, value))
         return True  # accept the change
+
+    def callback_position(self, path, value):
+        logging.info("Position changed to %s" % value)
+        try:
+            # open config file
+            with open(config_file, 'r') as file:
+                filedata = file.read()
+            # search for the line beginning with position and replace the value with the new one
+            filedata = re.sub(r'position\s*=\s*\d+', 'position = ' + str(value), filedata)
+            # write config file
+            with open(config_file, 'w') as file:
+                file.write(filedata)
+            return True
+
+        except Exception:
+            exception_type, exception_object, exception_traceback = sys.exc_info()
+            file = exception_traceback.tb_frame.f_code.co_filename
+            line = exception_traceback.tb_lineno
+            logging.error(
+                "--> callback_position(): Non blocking exception occurred:"
+                + f" {repr(exception_object)} of type {exception_type} in {file} line #{line}"
+            )
+            return False
 
 
 def main():
@@ -1593,7 +1625,6 @@ def main():
         '/Ac/Energy/Forward': {'initial': None, 'textformat': _kwh},
 
         '/Ac/MaxPower': {'initial': int(config['PV']['max']), 'textformat': _w},
-        '/Ac/Position': {'initial': int(config['PV']['position']), 'textformat': _n},
         '/UpdateIndex': {'initial': 0, 'textformat': _n},
 
         '/Enphase/AuthToken': {'initial': "", 'textformat': _str},  # used to populate chaging token
