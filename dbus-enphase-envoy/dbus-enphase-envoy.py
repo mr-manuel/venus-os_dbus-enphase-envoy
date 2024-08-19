@@ -22,7 +22,8 @@ from enphasetoken import getToken
 
 # import Victron Energy packages
 sys.path.insert(1, os.path.join(os.path.dirname(__file__), 'ext', 'velib_python'))
-from vedbus import VeDbusService
+from vedbus import VeDbusService  # noqa: E402
+from ve_utils import get_vrm_portal_id  # noqa: E402
 
 # disable "InsecureRequestWarning: Unverified HTTPS request is being made." warnings
 import urllib3
@@ -1333,7 +1334,7 @@ class DbusEnphaseEnvoyPvService:
         self._dbusservice.add_path('/ProductId', 0xFFFF)
         self._dbusservice.add_path('/ProductName', productname)
         self._dbusservice.add_path('/CustomName', productname)
-        self._dbusservice.add_path('/FirmwareVersion', '0.2.2 (20231218)')
+        self._dbusservice.add_path('/FirmwareVersion', '0.2.3 (20240819)')
         self._dbusservice.add_path('/HardwareVersion', hardware)
         self._dbusservice.add_path('/Connected', 1)
 
@@ -1484,7 +1485,7 @@ def main():
     # MQTT configuration
     if MQTT_enabled == 1:
         # create new instance
-        client = mqtt.Client("EnphaseEnvoyPV")
+        client = mqtt.Client("EnphaseEnvoyPV_" + get_vrm_portal_id())
         client.on_disconnect = on_disconnect
         client.on_connect = on_connect
         client.on_publish = on_publish
