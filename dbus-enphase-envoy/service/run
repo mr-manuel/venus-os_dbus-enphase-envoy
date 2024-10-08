@@ -2,4 +2,4 @@
 echo
 echo "*** starting dbus-enphase-envoy ***"
 exec 2>&1
-exec /data/etc/dbus-enphase-envoy/dbus-enphase-envoy.py
+exec python /data/etc/dbus-enphase-envoy/dbus-enphase-envoy.py

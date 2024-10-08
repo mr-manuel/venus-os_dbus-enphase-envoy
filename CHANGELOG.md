@@ -2,6 +2,7 @@
 
 ## v0.2.4-dev
 * Changed: Broker port missing on reconnect
+* Changed: Fixed service not starting sometimes
 
 ## v0.2.3
 * Added: Change PV position via GUI
