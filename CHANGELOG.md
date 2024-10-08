@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.2.4-dev
+* Changed: Broker port missing on reconnect
+
 ## v0.2.3
 * Added: Change PV position via GUI
 * Changed: Add VRM ID to MQTT client name
