@@ -1,0 +1,5 @@
+/*/config.ini
+/data
+/logs
+
+/dbus-enphase-envoy/*.json

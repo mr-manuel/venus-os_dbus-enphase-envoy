@@ -1,0 +1,6 @@
+{
+    "python.analysis.extraPaths": [
+        "./dbus-enphase-envoy/ext/velib_python"
+    ],
+    "[python]": { "editor.formatOnSave": true }
+}
