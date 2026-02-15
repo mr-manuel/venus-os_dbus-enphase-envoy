@@ -229,6 +229,7 @@ data_production_historic = {}
 data_devices = {}
 data_inverters = {}
 data_events = {}
+use_inverter_power = False
 
 fetch_production_historic_last = 0
 fetch_devices_last = 0
@@ -1429,8 +1430,20 @@ class DbusEnphaseEnvoyPvService:
             logging.info("--> DbusEnphaseEnvoyPvService->_update(): got exit signal")
             sys.exit()
 
-        self._dbusservice["/Ac/Power"] = round(data_meter_stream["pv"]["power"], 2) if data_meter_stream["pv"]["power"] is not None else None
-        self._dbusservice["/Ac/Current"] = round(data_meter_stream["pv"]["current"], 2) if data_meter_stream["pv"]["current"] is not None else None
+        # if CT discrepancy detected at startup, use microinverter sum instead
+        if use_inverter_power and data_inverters:
+            inverter_total_power = 0
+            for inv in data_inverters.values():
+                inverter_total_power += inv["currentWatts"]
+            self._dbusservice["/Ac/Power"] = round(inverter_total_power, 2)
+            total_voltage = data_meter_stream["pv"]["voltage"]
+            if total_voltage and total_voltage > 0:
+                self._dbusservice["/Ac/Current"] = round(inverter_total_power / total_voltage, 2)
+            else:
+                self._dbusservice["/Ac/Current"] = 0
+        else:
+            self._dbusservice["/Ac/Power"] = round(data_meter_stream["pv"]["power"], 2) if data_meter_stream["pv"]["power"] is not None else None
+            self._dbusservice["/Ac/Current"] = round(data_meter_stream["pv"]["current"], 2) if data_meter_stream["pv"]["current"] is not None else None
         self._dbusservice["/Ac/Voltage"] = round(data_meter_stream["pv"]["voltage"], 2) if data_meter_stream["pv"]["voltage"] is not None else None
         # needed for VRM historical data
         self._dbusservice["/Ac/Energy/Forward"] = round(data_meter_stream["pv"]["energy_forward"], 2) if data_meter_stream["pv"]["energy_forward"] is not None else None
@@ -1457,24 +1470,44 @@ class DbusEnphaseEnvoyPvService:
         self._dbusservice["/Enphase/MicroInvertersProducing"] = inverters["producing"]
 
         if "L1" in data_meter_stream["pv"]:
-            self._dbusservice["/Ac/L1/Power"] = round(data_meter_stream["pv"]["L1"]["power"], 2) if data_meter_stream["pv"]["L1"]["power"] is not None else None
-            self._dbusservice["/Ac/L1/Current"] = round(data_meter_stream["pv"]["L1"]["current"], 2) if data_meter_stream["pv"]["L1"]["current"] is not None else None
+            # if CT discrepancy detected, report all inverter power on L1
+            if use_inverter_power and data_inverters:
+                inverter_total_power = 0
+                for inv in data_inverters.values():
+                    inverter_total_power += inv["currentWatts"]
+                self._dbusservice["/Ac/L1/Power"] = round(inverter_total_power, 2)
+                l1_voltage = data_meter_stream["pv"]["L1"]["voltage"]
+                if l1_voltage and l1_voltage > 0:
+                    self._dbusservice["/Ac/L1/Current"] = round(inverter_total_power / l1_voltage, 2)
+                else:
+                    self._dbusservice["/Ac/L1/Current"] = 0
+            else:
+                self._dbusservice["/Ac/L1/Power"] = round(data_meter_stream["pv"]["L1"]["power"], 2) if data_meter_stream["pv"]["L1"]["power"] is not None else None
+                self._dbusservice["/Ac/L1/Current"] = round(data_meter_stream["pv"]["L1"]["current"], 2) if data_meter_stream["pv"]["L1"]["current"] is not None else None
             self._dbusservice["/Ac/L1/Voltage"] = round(data_meter_stream["pv"]["L1"]["voltage"], 2) if data_meter_stream["pv"]["L1"]["voltage"] is not None else None
             self._dbusservice["/Ac/L1/Frequency"] = round(data_meter_stream["pv"]["L1"]["frequency"], 4) if data_meter_stream["pv"]["L1"]["frequency"] is not None else None
             # needed for VRM historical data
             self._dbusservice["/Ac/L1/Energy/Forward"] = round(data_meter_stream["pv"]["L1"]["energy_forward"], 2) if data_meter_stream["pv"]["L1"]["energy_forward"] is not None else None
 
         if "L2" in data_meter_stream["pv"]:
-            self._dbusservice["/Ac/L2/Power"] = round(data_meter_stream["pv"]["L2"]["power"], 2) if data_meter_stream["pv"]["L2"]["power"] is not None else None
-            self._dbusservice["/Ac/L2/Current"] = round(data_meter_stream["pv"]["L2"]["current"], 2) if data_meter_stream["pv"]["L2"]["current"] is not None else None
+            if use_inverter_power:
+                self._dbusservice["/Ac/L2/Power"] = 0
+                self._dbusservice["/Ac/L2/Current"] = 0
+            else:
+                self._dbusservice["/Ac/L2/Power"] = round(data_meter_stream["pv"]["L2"]["power"], 2) if data_meter_stream["pv"]["L2"]["power"] is not None else None
+                self._dbusservice["/Ac/L2/Current"] = round(data_meter_stream["pv"]["L2"]["current"], 2) if data_meter_stream["pv"]["L2"]["current"] is not None else None
             self._dbusservice["/Ac/L2/Voltage"] = round(data_meter_stream["pv"]["L2"]["voltage"], 2) if data_meter_stream["pv"]["L2"]["voltage"] is not None else None
             self._dbusservice["/Ac/L2/Frequency"] = round(data_meter_stream["pv"]["L2"]["frequency"], 4) if data_meter_stream["pv"]["L2"]["frequency"] is not None else None
             # needed for VRM historical data
             self._dbusservice["/Ac/L2/Energy/Forward"] = round(data_meter_stream["pv"]["L2"]["energy_forward"], 2) if data_meter_stream["pv"]["L2"]["energy_forward"] is not None else None
 
         if "L3" in data_meter_stream["pv"]:
-            self._dbusservice["/Ac/L3/Power"] = round(data_meter_stream["pv"]["L3"]["power"], 2) if data_meter_stream["pv"]["L3"]["power"] is not None else None
-            self._dbusservice["/Ac/L3/Current"] = round(data_meter_stream["pv"]["L3"]["current"], 2) if data_meter_stream["pv"]["L3"]["current"] is not None else None
+            if use_inverter_power:
+                self._dbusservice["/Ac/L3/Power"] = 0
+                self._dbusservice["/Ac/L3/Current"] = 0
+            else:
+                self._dbusservice["/Ac/L3/Power"] = round(data_meter_stream["pv"]["L3"]["power"], 2) if data_meter_stream["pv"]["L3"]["power"] is not None else None
+                self._dbusservice["/Ac/L3/Current"] = round(data_meter_stream["pv"]["L3"]["current"], 2) if data_meter_stream["pv"]["L3"]["current"] is not None else None
             self._dbusservice["/Ac/L3/Voltage"] = round(data_meter_stream["pv"]["L3"]["voltage"], 2) if data_meter_stream["pv"]["L3"]["voltage"] is not None else None
             self._dbusservice["/Ac/L3/Frequency"] = round(data_meter_stream["pv"]["L3"]["frequency"], 4) if data_meter_stream["pv"]["L3"]["frequency"] is not None else None
             # needed for VRM historical data
@@ -1545,7 +1578,7 @@ class DbusEnphaseEnvoyPvService:
 
 
 def main():
-    global client, fetch_production_historic_last, fetch_devices_last, fetch_inverters_last, fetch_events_last, request_schema, auth_token, keep_running
+    global client, fetch_production_historic_last, fetch_devices_last, fetch_inverters_last, fetch_events_last, request_schema, auth_token, keep_running, use_inverter_power
 
     _thread.daemon = True  # allow the program to quit
 
@@ -1679,6 +1712,51 @@ def main():
         sleep(1)
         i += 1
 
+    # check if CT production matches microinverter production
+    # if discrepancy is more than 20%, use microinverter sum on L1 instead of CT data
+    if fetch_inverters_enabled == 1:
+        # wait for inverter data to be available
+        i = 0
+        while not bool(data_inverters):
+            if i % 60 != 0 or i == 0:
+                logging.info("--> data_inverters not yet ready for CT discrepancy check")
+
+            if keep_running is False:
+                logging.info("--> wait for first data: got exit signal")
+                sys.exit()
+
+            if i > 300:
+                logging.warning("--> No inverter data after 300 seconds, skipping CT discrepancy check. Using CT data.")
+                break
+
+            sleep(1)
+            i += 1
+
+        if data_inverters and data_meter_stream:
+            inverter_total = 0
+            for inv in data_inverters.values():
+                inverter_total += inv["currentWatts"]
+
+            ct_total = data_meter_stream["pv"]["power"] if "pv" in data_meter_stream and data_meter_stream["pv"]["power"] is not None else 0
+
+            if inverter_total > 5:
+                discrepancy = abs(inverter_total - ct_total) / inverter_total
+                if discrepancy > 0.20:
+                    use_inverter_power = True
+                    logging.warning(
+                        "--> CT production (%.1f W) differs from microinverter sum (%.1f W) by %.0f%%. Using microinverter reporting on L1."
+                        % (ct_total, inverter_total, discrepancy * 100)
+                    )
+                else:
+                    logging.info(
+                        "--> CT production (%.1f W) matches microinverter sum (%.1f W) within 20%%. Using CT data."
+                        % (ct_total, inverter_total)
+                    )
+            else:
+                logging.info("--> Microinverter total power is below 5 W, skipping CT discrepancy check.")
+    else:
+        logging.info("--> fetch_inverters is disabled, skipping CT discrepancy check. Using CT data.")
+
     # start threat for publishing mqtt data in background
     if MQTT_enabled == 1:
         publish_mqtt_data_thread = threading.Thread(target=publish_mqtt_data, name="Thread-PublishMqttData")
@@ -1731,6 +1809,18 @@ def main():
             "textformat": _n,
         },
     }
+
+    if use_inverter_power:
+        number_of_phases = 1
+    else:
+        number_of_phases = 0
+        if "L1" in data_meter_stream["pv"]:
+            number_of_phases += 1
+        if "L2" in data_meter_stream["pv"]:
+            number_of_phases += 1
+        if "L3" in data_meter_stream["pv"]:
+            number_of_phases += 1
+    paths_dbus.update({"/NumberOfPhases": {"initial": number_of_phases, "textformat": _n}})
 
     if "L1" in data_meter_stream["pv"]:
         paths_dbus.update(
