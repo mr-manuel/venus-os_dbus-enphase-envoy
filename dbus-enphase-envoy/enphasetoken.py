@@ -40,6 +40,16 @@ class getToken:
 
                 response_data = token.get_token_for_commissioned_gateway(self.serial)
 
+                # The /entrez_tokens endpoint occasionally returns an error string
+                # (e.g. "Error in generating Token") inside the HTML textarea instead
+                # of a real JWT. Detect this and fall back to the Enlighten login path.
+                if not response_data or not str(response_data).startswith('eyJ'):
+                    logging.warning(
+                        f"EnphaseToken: Primary auth returned invalid token "
+                        f"({str(response_data)[:60]}), trying Enlighten fallback"
+                    )
+                    response_data = token.get_token_via_enlighten(self.user, self.password, self.serial)
+
                 json_data = {
                     "auth_token": response_data,
                     "created": int(time()),

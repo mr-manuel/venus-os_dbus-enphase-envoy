@@ -92,6 +92,37 @@ class Authentication:
         response = requests.post(Authentication.AUTHENTICATION_HOST + '/entrez_tokens', headers=Authentication.STEALTHY_HEADERS_FORM, cookies=self.session_cookies, data={'uncommissioned': 'true'})
         return self._extract_token_from_response(response.text)
 
+    def get_token_via_enlighten(self, username, password, gateway_serial_number):
+        """Alternative token path via Enlighten login.
+
+        The /entrez_tokens endpoint occasionally returns an error string inside the
+        expected HTML textarea instead of a real JWT (e.g. "Error in generating Token").
+        This method uses the older enlighten.enphaseenergy.com login flow which returns
+        the token directly as text and has proven more reliable as a fallback.
+        """
+        response_login = requests.post(
+            'https://enlighten.enphaseenergy.com/login/login.json',
+            headers=Authentication.STEALTHY_HEADERS_FORM,
+            data={'user[email]': username, 'user[password]': password}
+        )
+        login_data = response_login.json()
+        if login_data.get('message') != 'success' or 'session_id' not in login_data:
+            raise ValueError(f"Enlighten login failed: {login_data.get('message', 'unknown')}")
+
+        response_token = requests.post(
+            Authentication.AUTHENTICATION_HOST + '/tokens',
+            headers=Authentication.STEALTHY_HEADERS,
+            json={
+                'session_id': login_data['session_id'],
+                'serial_num': gateway_serial_number,
+                'username': username,
+            }
+        )
+        token = response_token.text.strip()
+        if not token.startswith('eyJ'):
+            raise ValueError(f"Enlighten token request failed: {token[:80]}")
+        return token
+
     def get_token_from_enlighten_session_id(self, enlighten_session_id, gateway_serial_number, username):
         # This is probably used internally by the Enlighten website itself to authorise sessions via Entrez.
         return requests.post(
